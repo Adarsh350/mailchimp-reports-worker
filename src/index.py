@@ -1,0 +1,1819 @@
+from __future__ import annotations
+
+import asyncio
+import base64
+import html
+import json
+import re
+from datetime import datetime, timedelta, timezone
+from typing import Any
+from urllib.parse import parse_qs, urlparse
+
+from js import Object
+from pyodide.ffi import to_js
+from workers import Response, WorkerEntrypoint, fetch
+
+
+MAX_RETRIES = 4
+MAX_WEBHOOK_BODY_BYTES = 128 * 1024
+PROCESS_BATCH_SIZE = 4
+METRIC_LABELS = {
+    "deliveries": "Emails Delivered",
+    "delivery_rate": "Delivery Rate",
+    "bounce_rate": "Bounce Rate",
+    "unique_open_rate": "Unique Open Rate",
+    "click_rate": "Click Rate (CTR)",
+    "ctor": "Click-to-Open Rate",
+    "unsubscribes": "Unsubscribes",
+    "unsubscribe_rate": "Unsubscribe Rate",
+    "abuse_reports": "Abuse Reports",
+}
+STATUS_STYLE = {
+    "EXCEEDED": "status-good",
+    "MET": "status-good",
+    "BELOW": "status-bad",
+    "N/A": "status-neutral",
+}
+CAMPAIGN_NUMBER_RE = re.compile(r"(?:campaign\s*)?(\d+)", re.IGNORECASE)
+TAGGED_SEGMENT_RE = re.compile(r"tagged\s+([A-Za-z0-9 &/_-]+)", re.IGNORECASE)
+STRIP_TAGS_RE = re.compile(r"<[^>]+>")
+WHITESPACE_RE = re.compile(r"\s+")
+
+
+class MailchimpApiError(Exception):
+    def __init__(self, status: int, body: dict[str, Any], url: str):
+        message = body.get("detail") or body.get("title") or f"Mailchimp API error {status}"
+        super().__init__(message)
+        self.status = status
+        self.body = body
+        self.url = url
+
+
+class Default(WorkerEntrypoint):
+    async def fetch(self, request):
+        url = urlparse(request.url)
+        path = url.path.rstrip("/") or "/"
+        query = parse_qs(url.query, keep_blank_values=True)
+
+        try:
+            if request.method == "GET" and path in {"/", "/healthz"}:
+                return json_response(
+                    {
+                        "ok": True,
+                        "service": "mailchimp-reports-worker",
+                        "schedule": "0 9 * * *",
+                        "webhook_secret_configured": bool(
+                            get_optional_env(self.env, "MAILCHIMP_WEBHOOK_SECRET")
+                        ),
+                    }
+                )
+
+            if request.method == "POST" and is_webhook_path(
+                path, get_optional_env(self.env, "MAILCHIMP_WEBHOOK_SECRET")
+            ):
+                return await self.handle_webhook(request)
+
+            if request.method == "GET" and is_test_email_path(
+                path, get_optional_env(self.env, "MAILCHIMP_WEBHOOK_SECRET")
+            ):
+                return await self.handle_test_email()
+
+            if path.startswith("/report/"):
+                campaign_id = path.split("/", 2)[2].strip()
+                if not campaign_id:
+                    return json_response(
+                        {"ok": False, "error": "Campaign ID is required."}, 400
+                    )
+                if request.method == "GET":
+                    return await self.handle_manual_report(
+                        campaign_id,
+                        query,
+                        send_email_flag=query_truthy(query, "email"),
+                    )
+                if request.method == "POST":
+                    return await self.handle_manual_report(
+                        campaign_id, query, send_email_flag=True
+                    )
+                return json_response({"ok": False, "error": "Method not allowed."}, 405)
+
+            return json_response({"ok": False, "error": "Not found."}, 404)
+        except MailchimpApiError as error:
+            log_event(
+                "mailchimp_api_error",
+                {
+                    "status": error.status,
+                    "url": error.url,
+                    "detail": error.body.get("detail"),
+                },
+            )
+            return json_response(
+                {
+                    "ok": False,
+                    "error": "Mailchimp API request failed.",
+                    "status": error.status,
+                    "detail": error.body.get("detail"),
+                },
+                502,
+            )
+        except Exception as error:
+            log_event("request_failed", {"path": path, "error": str(error)})
+            return json_response(
+                {
+                    "ok": False,
+                    "error": "Internal server error.",
+                    "detail": str(error),
+                },
+                500,
+            )
+
+    async def scheduled(self, controller):
+        scheduled_time = getattr(controller, "scheduledTime", None)
+        await self.process_due_campaigns(scheduled_time)
+
+    async def handle_webhook(self, request):
+        body = await request.text()
+        if len(body.encode("utf-8")) > MAX_WEBHOOK_BODY_BYTES:
+            return json_response({"ok": False, "error": "Webhook payload too large."}, 413)
+
+        payload = parse_webhook_payload(body, request.headers.get("content-type") or "")
+        campaign_id = first_value(
+            payload,
+            "data.id",
+            "campaign.id",
+            "campaign_id",
+            "id",
+            "campaign.web_id",
+            "data.web_id",
+        )
+        explicit_status = normalize_token(
+            first_value(payload, "data.status", "status", "action")
+        )
+        explicit_type = normalize_token(
+            first_value(payload, "type", "event", "data.type", "data.event")
+        )
+
+        if explicit_status and explicit_status not in {"sent", "sending", "campaign_sent"}:
+            return json_response({"ok": True, "ignored": True, "reason": explicit_status}, 202)
+
+        if explicit_type and "campaign" not in explicit_type and "send" not in explicit_type:
+            return json_response({"ok": True, "ignored": True, "reason": explicit_type}, 202)
+
+        if not campaign_id:
+            return json_response(
+                {"ok": False, "error": "Webhook payload did not include a campaign ID."},
+                400,
+            )
+
+        campaign = await fetch_mailchimp_json(self.env, f"/campaigns/{campaign_id}")
+        audience_id = nested_get(campaign, "recipients", "list_id")
+        configured_audience_id = require_env(self.env, "AUDIENCE_ID")
+        if audience_id and audience_id != configured_audience_id:
+            return json_response(
+                {
+                    "ok": True,
+                    "ignored": True,
+                    "reason": "different_audience",
+                    "campaign_id": campaign_id,
+                    "audience_id": audience_id,
+                },
+                202,
+            )
+
+        send_time = campaign.get("send_time") or first_value(
+            payload, "fired_at", "data.send_time", "send_time"
+        )
+        send_date = normalize_send_date(send_time)
+        record_key = campaign_kv_key(campaign_id)
+        existing = await load_campaign_record(self.env, record_key)
+        stored_record = build_campaign_record(
+            existing, campaign, configured_audience_id, send_date
+        )
+        await store_campaign_record(self.env, record_key, stored_record)
+
+        log_event(
+            "campaign_webhook_stored",
+            {
+                "campaign_id": campaign_id,
+                "send_date": send_date,
+                "title": stored_record["title"],
+                "status": stored_record["status"],
+            },
+        )
+        return json_response(
+            {
+                "ok": True,
+                "campaign_id": campaign_id,
+                "send_date": send_date,
+                "title": stored_record["title"],
+                "status": stored_record["status"],
+            }
+        )
+
+    async def handle_manual_report(
+        self, campaign_id: str, query: dict[str, list[str]], send_email_flag: bool
+    ):
+        cached_records = await load_all_campaign_records(self.env)
+        base_record = record_by_id(cached_records, campaign_id)
+        bundle = await build_report_bundle(
+            self.env, campaign_id, base_record, cached_records
+        )
+        html_body = render_report_html(bundle)
+
+        if send_email_flag:
+            record = await persist_report_result(
+                self.env,
+                bundle,
+                html_body,
+                "manual",
+                prior_record=base_record,
+            )
+            return json_response(
+                {
+                    "ok": True,
+                    "campaign_id": campaign_id,
+                    "status": record["status"],
+                    "emailed_to": require_env(self.env, "MY_EMAIL"),
+                    "subject": report_subject(bundle),
+                }
+            )
+
+        return html_response(html_body)
+
+    async def handle_test_email(self):
+        timestamp = utc_now().strftime("%Y-%m-%d %H:%M:%S UTC")
+        subject = f"Codex delivery test {timestamp}"
+        html_body = (
+            "<html><body style=\"font-family:Arial,sans-serif;color:#111827;\">"
+            "<h1 style=\"font-size:20px;\">Mailchimp Reports Worker Test</h1>"
+            f"<p>This is a live delivery test sent at <strong>{html.escape(timestamp)}</strong>.</p>"
+            "<p>If you received this, Cloudflare Worker email delivery is working end to end.</p>"
+            "</body></html>"
+        )
+        plain_text = (
+            "Mailchimp Reports Worker Test\n\n"
+            f"This is a live delivery test sent at {timestamp}.\n"
+            "If you received this, Cloudflare Worker email delivery is working end to end.\n"
+        )
+        await send_report_email(self.env, subject, html_body, plain_text)
+        return json_response(
+            {
+                "ok": True,
+                "subject": subject,
+                "emailed_to": require_env(self.env, "MY_EMAIL"),
+            }
+        )
+
+    async def process_due_campaigns(self, scheduled_time):
+        now_utc = (
+            utc_now()
+            if scheduled_time is None
+            else datetime.fromtimestamp(int(scheduled_time) / 1000, tz=timezone.utc)
+        )
+        target_date = (now_utc.date() - timedelta(days=2)).isoformat()
+        all_records = await load_all_campaign_records(self.env)
+        due_records = [
+            record
+            for record in all_records
+            if record.get("status") == "pending"
+            and record.get("send_date") == target_date
+        ]
+
+        log_event(
+            "scheduled_scan_completed",
+            {
+                "target_date": target_date,
+                "pending_campaigns": len(due_records),
+                "total_cached_campaigns": len(all_records),
+            },
+        )
+
+        for chunk in chunked(due_records, PROCESS_BATCH_SIZE):
+            await asyncio.gather(
+                *(self.process_one_due_campaign(record, all_records) for record in chunk),
+                return_exceptions=True,
+            )
+
+    async def process_one_due_campaign(
+        self, record: dict[str, Any], cached_records: list[dict[str, Any]]
+    ):
+        campaign_id = record["id"]
+        try:
+            bundle = await build_report_bundle(
+                self.env, campaign_id, record, cached_records
+            )
+            html_body = render_report_html(bundle)
+            stored_record = await persist_report_result(
+                self.env,
+                bundle,
+                html_body,
+                "scheduled",
+                prior_record=record,
+            )
+            record.clear()
+            record.update(stored_record)
+            log_event(
+                "campaign_report_sent",
+                {
+                    "campaign_id": campaign_id,
+                    "title": stored_record["title"],
+                    "send_date": stored_record["send_date"],
+                },
+            )
+        except Exception as error:
+            record["last_error"] = str(error)
+            record["last_attempted_at"] = iso_now()
+            await store_campaign_record(self.env, campaign_kv_key(campaign_id), record)
+            log_event(
+                "campaign_report_failed",
+                {"campaign_id": campaign_id, "error": str(error)},
+            )
+
+
+def build_campaign_record(
+    existing: dict[str, Any] | None,
+    campaign: dict[str, Any],
+    audience_id: str,
+    send_date: str,
+) -> dict[str, Any]:
+    record = dict(existing or {})
+    settings = campaign.get("settings") or {}
+    recipients = campaign.get("recipients") or {}
+    record.update(
+        {
+            "id": campaign["id"],
+            "title": settings.get("title")
+            or campaign.get("title")
+            or record.get("title")
+            or campaign["id"],
+            "subject_line": settings.get("subject_line") or record.get("subject_line"),
+            "from_name": settings.get("from_name") or record.get("from_name"),
+            "reply_to": settings.get("reply_to") or record.get("reply_to"),
+            "audience_id": audience_id,
+            "audience_name": recipients.get("list_name") or record.get("audience_name"),
+            "segment_text": recipients.get("segment_text") or record.get("segment_text"),
+            "send_time": campaign.get("send_time") or record.get("send_time"),
+            "send_date": send_date,
+            "status": "reported" if record.get("status") == "reported" else "pending",
+            "webhook_received_at": record.get("webhook_received_at") or iso_now(),
+            "last_error": None,
+        }
+    )
+    if existing and existing.get("metrics_snapshot"):
+        record["metrics_snapshot"] = existing["metrics_snapshot"]
+        record["reported_at"] = existing.get("reported_at")
+        record["reported_via"] = existing.get("reported_via")
+    return record
+
+
+async def build_report_bundle(
+    env,
+    campaign_id: str,
+    base_record: dict[str, Any] | None,
+    cached_records: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    campaign_path = f"/campaigns/{campaign_id}"
+    report_path = f"/reports/{campaign_id}"
+    unsubscribed_path = f"/reports/{campaign_id}/unsubscribed?count=1"
+    abuse_path = f"/reports/{campaign_id}/abuse-reports?count=1"
+
+    campaign, report, unsubscribed, abuse = await asyncio.gather(
+        fetch_mailchimp_json(env, campaign_path),
+        fetch_mailchimp_json(env, report_path),
+        fetch_mailchimp_json(env, unsubscribed_path),
+        fetch_mailchimp_json(env, abuse_path),
+    )
+
+    audience_id = require_env(env, "AUDIENCE_ID")
+    working_record = build_campaign_record(
+        base_record,
+        campaign,
+        audience_id,
+        normalize_send_date(campaign.get("send_time")),
+    )
+    metrics = compute_metrics(campaign, report, unsubscribed, abuse)
+    history_source = (
+        cached_records if cached_records is not None else await load_all_campaign_records(env)
+    )
+    comparison_records = select_comparison_records(history_source, campaign_id)
+    comparison_bundle = build_comparison_bundle(metrics, comparison_records)
+
+    send_date = parse_iso_datetime(working_record.get("send_time")) or parse_iso_datetime(
+        working_record["send_date"]
+    )
+    report_context = {
+        "campaign_id": campaign_id,
+        "title": working_record["title"],
+        "subject_line": working_record.get("subject_line") or "",
+        "brand_name": working_record.get("from_name")
+        or working_record.get("audience_name")
+        or "Mailchimp",
+        "audience_name": working_record.get("audience_name") or "Audience",
+        "segment_name": extract_segment_name(working_record.get("segment_text")),
+        "send_time_label": format_datetime_label(send_date, include_time=False),
+        "last_activity_label": metrics["last_activity_label"],
+        "last_activity_value": metrics["last_activity_value"],
+        "current_month_year": utc_now().strftime("%B %Y"),
+        "comparison_heading": comparison_bundle["heading"],
+        "recommendations_heading": recommendation_heading(working_record["title"]),
+    }
+
+    return {
+        "record": working_record,
+        "campaign": campaign,
+        "report": report,
+        "metrics": metrics,
+        "context": report_context,
+        "executive_summary": build_executive_summary(metrics, report_context),
+        "delivery_narrative": build_delivery_narrative(metrics, report_context),
+        "open_narrative": build_open_narrative(metrics, report_context),
+        "click_narrative": build_click_narrative(metrics, report_context),
+        "trust_narrative": build_trust_narrative(metrics, report_context),
+        "comparison": comparison_bundle,
+        "recommendations": build_recommendations(
+            metrics, report_context, comparison_bundle
+        ),
+        "closing_summary": build_closing_summary(
+            metrics, report_context, comparison_bundle
+        ),
+    }
+
+
+def compute_metrics(
+    campaign: dict[str, Any],
+    report: dict[str, Any],
+    unsubscribed: dict[str, Any],
+    abuse: dict[str, Any],
+) -> dict[str, Any]:
+    opens = report.get("opens") or {}
+    clicks = report.get("clicks") or {}
+    bounces = report.get("bounces") or {}
+    total_sends = as_int(
+        report.get("emails_sent") or nested_get(campaign, "recipients", "recipient_count")
+    )
+    soft_bounces = as_int(bounces.get("soft_bounces"))
+    hard_bounces = as_int(bounces.get("hard_bounces"))
+    syntax_errors = as_int(bounces.get("syntax_errors"))
+    total_bounces = soft_bounces + hard_bounces + syntax_errors
+    deliveries = max(total_sends - total_bounces, 0)
+    unique_opens = as_int(opens.get("unique_opens"))
+    total_opens = as_int(opens.get("opens_total"))
+    unique_clicks = as_int(clicks.get("unique_clicks"))
+    unique_subscriber_clicks = as_int(
+        clicks.get("unique_subscriber_clicks") or unique_clicks
+    )
+    total_clicks = as_int(clicks.get("clicks_total"))
+    unsubscribed_total = as_int(unsubscribed.get("total_items"))
+    abuse_total = as_int(abuse.get("total_items"))
+    open_rate = percent(opens.get("open_rate"), unique_opens, deliveries)
+    click_rate = percent(clicks.get("click_rate"), unique_clicks, deliveries)
+    ctor = percent(clicks.get("clicks_to_open_rate"), unique_clicks, unique_opens)
+    if ctor == 0.0 and unique_opens > 0:
+        ctor = round((unique_clicks / unique_opens) * 100, 1)
+    bounce_rate = round((total_bounces / total_sends) * 100, 1) if total_sends else 0.0
+    delivery_rate = round((deliveries / total_sends) * 100, 1) if total_sends else 0.0
+    unsubscribe_rate = (
+        round((unsubscribed_total / deliveries) * 100, 2) if deliveries else 0.0
+    )
+    last_open = parse_iso_datetime(opens.get("last_open"))
+    last_click = parse_iso_datetime(clicks.get("last_click"))
+    last_activity = last_click if total_clicks > 0 and last_click else last_open
+    last_activity_label = "Last Click" if total_clicks > 0 and last_click else "Last Opened"
+
+    clicks_not_applicable = infer_clicks_not_applicable(
+        campaign, total_clicks, unique_clicks
+    )
+    scorecard_rows = [
+        scorecard_row("Emails Delivered", format_integer(deliveries), "—", "MET"),
+        scorecard_row(
+            "Delivery Rate",
+            format_percent(delivery_rate),
+            "95%+ healthy",
+            delivery_status(delivery_rate),
+        ),
+        scorecard_row(
+            "Bounce Rate",
+            format_percent(bounce_rate),
+            "Under 5% acceptable",
+            bounce_status(bounce_rate),
+        ),
+        scorecard_row(
+            "Unique Open Rate",
+            format_percent(open_rate),
+            "18%–25% avg | 25%+ strong",
+            open_status(open_rate),
+        ),
+        scorecard_row(
+            "Click Rate (CTR)",
+            format_percent(click_rate)
+            if not clicks_not_applicable
+            else "0% — No CTA included",
+            "3%+ avg | 5%+ strong",
+            "N/A" if clicks_not_applicable else click_status(click_rate),
+        ),
+        scorecard_row(
+            "Click-to-Open Rate",
+            format_percent(ctor) if not clicks_not_applicable else "0% — No CTA included",
+            "8%–12% healthy",
+            "N/A" if clicks_not_applicable else ctor_status(ctor),
+        ),
+        scorecard_row(
+            "Unsubscribe Rate",
+            format_percent(unsubscribe_rate),
+            "Under 0.5%",
+            unsubscribe_status(unsubscribe_rate),
+        ),
+        scorecard_row(
+            "Abuse Reports",
+            format_integer(abuse_total),
+            "Effectively zero",
+            abuse_status(abuse_total),
+        ),
+    ]
+
+    summary_snapshot = {
+        "label": comparison_label(campaign),
+        "title": nested_get(campaign, "settings", "title") or campaign.get("id"),
+        "send_date": normalize_send_date(campaign.get("send_time")),
+        "deliveries": deliveries,
+        "delivery_rate": delivery_rate,
+        "bounce_rate": bounce_rate,
+        "unique_open_rate": open_rate,
+        "click_rate": click_rate,
+        "ctor": ctor,
+        "unsubscribes": unsubscribed_total,
+        "unsubscribe_rate": unsubscribe_rate,
+        "abuse_reports": abuse_total,
+    }
+
+    return {
+        "total_sends": total_sends,
+        "deliveries": deliveries,
+        "delivery_rate": delivery_rate,
+        "total_bounces": total_bounces,
+        "soft_bounces": soft_bounces,
+        "hard_bounces": hard_bounces,
+        "syntax_errors": syntax_errors,
+        "bounce_rate": bounce_rate,
+        "total_opens": total_opens,
+        "unique_opens": unique_opens,
+        "open_rate": open_rate,
+        "proxy_excluded_unique_opens": as_int(opens.get("proxy_excluded_unique_opens")),
+        "proxy_excluded_open_rate": round(
+            as_float(opens.get("proxy_excluded_open_rate")) * 100, 1
+        )
+        if opens.get("proxy_excluded_open_rate") not in (None, "")
+        else 0.0,
+        "last_open": last_open,
+        "total_clicks": total_clicks,
+        "unique_clicks": unique_clicks,
+        "unique_subscriber_clicks": unique_subscriber_clicks,
+        "click_rate": click_rate,
+        "ctor": ctor,
+        "last_click": last_click,
+        "unsubscribes": unsubscribed_total,
+        "unsubscribe_rate": unsubscribe_rate,
+        "abuse_reports": abuse_total,
+        "clicks_not_applicable": clicks_not_applicable,
+        "last_activity_label": last_activity_label,
+        "last_activity_value": format_datetime_label(last_activity, include_time=True)
+        if last_activity
+        else "Not yet available",
+        "scorecard_rows": scorecard_rows,
+        "snapshot": summary_snapshot,
+    }
+
+
+async def persist_report_result(
+    env,
+    bundle: dict[str, Any],
+    html_body: str,
+    source: str,
+    prior_record: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    await send_report_email(env, report_subject(bundle), html_body, render_report_plain_text(bundle))
+    record = dict(prior_record or bundle["record"])
+    record.update(
+        {
+            "status": "reported",
+            "reported_at": iso_now(),
+            "reported_via": source,
+            "last_error": None,
+            "metrics_snapshot": bundle["metrics"]["snapshot"],
+            "subject_line": bundle["record"].get("subject_line"),
+            "from_name": bundle["record"].get("from_name"),
+            "reply_to": bundle["record"].get("reply_to"),
+            "audience_name": bundle["record"].get("audience_name"),
+            "segment_text": bundle["record"].get("segment_text"),
+        }
+    )
+    await store_campaign_record(env, campaign_kv_key(record["id"]), record)
+    return record
+
+
+def build_executive_summary(metrics: dict[str, Any], context: dict[str, Any]) -> str:
+    strongest_signal = "the clean quality profile"
+    if metrics["click_rate"] >= 5:
+        strongest_signal = f"the standout {format_percent(metrics['click_rate'])} click rate"
+    elif metrics["open_rate"] >= 25:
+        strongest_signal = f"the {format_percent(metrics['open_rate'])} unique open rate"
+
+    primary_watchout = "no material list-health issues"
+    if metrics["bounce_rate"] > 5:
+        primary_watchout = f"the elevated {format_percent(metrics['bounce_rate'])} bounce rate"
+    elif metrics["unsubscribe_rate"] > 0.5:
+        primary_watchout = f"the {format_percent(metrics['unsubscribe_rate'])} unsubscribe rate"
+    elif metrics["click_rate"] < 3 and not metrics["clicks_not_applicable"]:
+        primary_watchout = f"the modest {format_percent(metrics['click_rate'])} click rate"
+
+    audience_phrase = context["segment_name"] or context["audience_name"]
+    return (
+        f"{context['title']} was delivered to the {audience_phrase} audience with "
+        f"{format_integer(metrics['deliveries'])} successful deliveries from {format_integer(metrics['total_sends'])} total sends "
+        f"({format_percent(metrics['delivery_rate'])} delivery rate). The campaign generated a "
+        f"{format_percent(metrics['open_rate'])} unique open rate and a {format_percent(metrics['click_rate'])} click rate, "
+        f"with {strongest_signal} emerging as the clearest performance signal. The main watchpoint is "
+        f"{primary_watchout}. With {format_integer(metrics['abuse_reports'])} abuse reports and an unsubscribe rate of "
+        f"{format_percent(metrics['unsubscribe_rate'])}, the report establishes a clean benchmark for the next send."
+    )
+
+
+def build_delivery_narrative(metrics: dict[str, Any], context: dict[str, Any]) -> str:
+    return (
+        f"Emails were sent to the {context['segment_name'] or context['audience_name']} audience. "
+        f"Of the {format_integer(metrics['total_sends'])} total sends, {format_integer(metrics['deliveries'])} were successfully delivered, "
+        f"with {format_integer(metrics['total_bounces'])} total bounces "
+        f"({format_integer(metrics['soft_bounces'])} soft, {format_integer(metrics['hard_bounces'])} hard), "
+        f"resulting in a bounce rate of {format_percent(metrics['bounce_rate'])}. "
+        f"{delivery_assessment(metrics)}"
+    )
+
+
+def build_open_narrative(metrics: dict[str, Any], context: dict[str, Any]) -> str:
+    revisit_ratio = (
+        round(metrics["total_opens"] / metrics["unique_opens"], 2)
+        if metrics["unique_opens"]
+        else 0.0
+    )
+    return (
+        f"The campaign generated {format_integer(metrics['unique_opens'])} unique opens from "
+        f"{format_integer(metrics['deliveries'])} deliveries, producing a unique open rate of "
+        f"{format_percent(metrics['open_rate'])}. Total opens reached {format_integer(metrics['total_opens'])}, "
+        f"which indicates an average of {revisit_ratio:.2f} opens per engaged contact. "
+        f"{open_assessment(metrics)}"
+    )
+
+
+def build_click_narrative(metrics: dict[str, Any], context: dict[str, Any]) -> str:
+    if metrics["clicks_not_applicable"]:
+        return (
+            "Click metrics are not treated as a performance miss for this send. The campaign recorded no clicks, "
+            "which typically indicates either a deliberate brand-awareness message or a call-to-action that was not yet compelling enough "
+            "to move recipients deeper into the funnel."
+        )
+    return (
+        f"{format_integer(metrics['unique_subscriber_clicks'])} recipients clicked through, generating "
+        f"{format_integer(metrics['total_clicks'])} total clicks and {format_integer(metrics['unique_clicks'])} unique clicks. "
+        f"The click rate of {format_percent(metrics['click_rate'])} and click-to-open rate of {format_percent(metrics['ctor'])} "
+        f"show how effectively openers translated into downstream engagement. {click_assessment(metrics)}"
+    )
+
+
+def build_trust_narrative(metrics: dict[str, Any], context: dict[str, Any]) -> str:
+    return (
+        f"The campaign recorded {format_integer(metrics['unsubscribes'])} unsubscribes "
+        f"({format_percent(metrics['unsubscribe_rate'])}) and {format_integer(metrics['abuse_reports'])} abuse reports. "
+        f"{trust_assessment(metrics)}"
+    )
+
+
+def build_closing_summary(
+    metrics: dict[str, Any],
+    context: dict[str, Any],
+    comparison_bundle: dict[str, Any],
+) -> str:
+    performance_note = "a stable baseline for future campaigns"
+    if metrics["click_rate"] >= 5 and metrics["ctor"] >= 12:
+        performance_note = "one of the strongest click-engagement results in the current campaign set"
+    elif metrics["bounce_rate"] > 5:
+        performance_note = "a useful signal that list hygiene needs attention before the next send"
+
+    comparison_note = comparison_bundle["summary"]
+    return (
+        f"{context['title']} closes with {performance_note}. {comparison_note} "
+        f"With clear strengths in delivery and audience interest, the next send should focus on preserving list quality "
+        f"while improving the weakest engagement metric identified in this report."
+    )
+
+
+def build_recommendations(
+    metrics: dict[str, Any],
+    context: dict[str, Any],
+    comparison_bundle: dict[str, Any],
+) -> list[str]:
+    recommendations: list[str] = []
+
+    if metrics["hard_bounces"] > 0:
+        recommendations.append(
+            f"Remove the {format_integer(metrics['hard_bounces'])} hard-bounce address{'es' if metrics['hard_bounces'] != 1 else ''} immediately to protect sender reputation."
+        )
+    if metrics["soft_bounces"] > 0:
+        recommendations.append(
+            f"Review the {format_integer(metrics['soft_bounces'])} soft bounces and suppress contacts that repeat across multiple campaigns."
+        )
+    if metrics["bounce_rate"] > 5:
+        recommendations.append(
+            "Run a targeted list-hygiene audit before the next send because the bounce rate is above the accepted 5% threshold."
+        )
+    if metrics["open_rate"] < 25:
+        recommendations.append(
+            "Test subject lines and preview text to improve top-of-funnel engagement and lift unique opens above the 25% benchmark."
+        )
+    if not metrics["clicks_not_applicable"] and (
+        metrics["click_rate"] < 3 or metrics["ctor"] < 8
+    ):
+        recommendations.append(
+            "Reduce CTA friction with a clearer next step, a more specific offer, or a lower-commitment conversion action."
+        )
+    if metrics["unique_opens"] > metrics["unique_subscriber_clicks"]:
+        recommendations.append(
+            f"Follow up with the {format_integer(metrics['unique_opens'] - metrics['unique_subscriber_clicks'])} engaged openers who did not click while the campaign is still recent."
+        )
+    if metrics["unsubscribe_rate"] > 0.5:
+        recommendations.append(
+            "Inspect unsubscribe patterns by role, company, or segment criteria to refine the next audience selection."
+        )
+    if metrics["click_rate"] >= 5 and metrics["ctor"] >= 12:
+        recommendations.append(
+            "Preserve the winning content structure and CTA placement because the click efficiency is well above healthy benchmarks."
+        )
+    if comparison_bundle["trend_summary"]["best_metric"] == "bounce_rate":
+        recommendations.append(
+            "Keep the current list-sourcing approach in place because delivery quality is improving versus earlier reported campaigns."
+        )
+
+    if len(recommendations) < 6:
+        recommendations.append(
+            "Keep sends close enough together to build on current recognition while this audience is still warm."
+        )
+    if len(recommendations) < 6:
+        recommendations.append(
+            "Document what changed in targeting, subject line, and CTA so the next campaign can build from this baseline with intent."
+        )
+
+    return recommendations[:6]
+
+
+def build_comparison_bundle(
+    current_metrics: dict[str, Any],
+    comparison_records: list[dict[str, Any]],
+) -> dict[str, Any]:
+    previous = comparison_records[-2:]
+    current_snapshot = current_metrics["snapshot"]
+    headers = ["Metric"] + [item["metrics_snapshot"]["label"] for item in previous] + [
+        current_snapshot["label"],
+        "Trend",
+    ]
+    current_compare_target = previous[-1]["metrics_snapshot"] if previous else None
+    rows = []
+
+    metric_keys = [
+        "deliveries",
+        "delivery_rate",
+        "unique_open_rate",
+        "click_rate",
+        "ctor",
+        "unsubscribes",
+        "abuse_reports",
+        "bounce_rate",
+    ]
+    for metric_key in metric_keys:
+        cells = [METRIC_LABELS.get(metric_key, metric_key.replace("_", " ").title())]
+        for item in previous:
+            cells.append(format_comparison_value(metric_key, item["metrics_snapshot"]))
+        cells.append(format_comparison_value(metric_key, current_snapshot))
+        cells.append(trend_symbol(metric_key, current_compare_target, current_snapshot))
+        rows.append(cells)
+
+    trend_parts = []
+    if current_compare_target:
+        open_delta = round(
+            current_snapshot["unique_open_rate"]
+            - current_compare_target["unique_open_rate"],
+            1,
+        )
+        click_delta = round(
+            current_snapshot["click_rate"] - current_compare_target["click_rate"], 1
+        )
+        bounce_delta = round(
+            current_compare_target["bounce_rate"] - current_snapshot["bounce_rate"], 1
+        )
+        if open_delta > 0:
+            trend_parts.append(f"open rate improved by {format_signed_percent(open_delta)}")
+        elif open_delta < 0:
+            trend_parts.append(f"open rate eased by {format_signed_percent(open_delta)}")
+        if click_delta > 0:
+            trend_parts.append(
+                f"click rate improved by {format_signed_percent(click_delta)}"
+            )
+        elif click_delta < 0:
+            trend_parts.append(
+                f"click rate softened by {format_signed_percent(click_delta)}"
+            )
+        if bounce_delta > 0:
+            trend_parts.append(
+                f"bounce rate improved by {format_percent(abs(bounce_delta))}"
+            )
+        elif bounce_delta < 0:
+            trend_parts.append(
+                f"bounce rate worsened by {format_percent(abs(bounce_delta))}"
+            )
+
+    summary = (
+        "Historical comparison is available once at least one earlier campaign has been reported."
+        if not previous
+        else "Compared with the most recent reported campaign, "
+        + (", ".join(trend_parts[:3]) if trend_parts else "performance was broadly stable")
+        + "."
+    )
+    heading = (
+        "5. Campaign Comparison: Historical Baseline vs Current Campaign"
+        if not previous
+        else "5. Campaign Comparison: Previous Reported Campaigns vs Current Campaign"
+    )
+
+    return {
+        "heading": heading,
+        "headers": headers,
+        "rows": rows,
+        "summary": summary,
+        "trend_summary": {
+            "best_metric": best_metric_from_snapshot(current_snapshot),
+        },
+    }
+
+
+def render_report_html(bundle: dict[str, Any]) -> str:
+    context = bundle["context"]
+    metrics = bundle["metrics"]
+    comparison = bundle["comparison"]
+    scorecard_html = render_table(
+        ["Metric", "Result", "Industry Benchmark", "Status"],
+        [
+            [row["label"], row["result"], row["benchmark"], status_badge(row["status"])]
+            for row in metrics["scorecard_rows"]
+        ],
+        wide=True,
+    )
+    delivery_table = render_table(
+        [],
+        [
+            ["Total Sends", format_integer(metrics["total_sends"])],
+            ["Successful Deliveries", format_integer(metrics["deliveries"])],
+            ["Total Bounces", format_integer(metrics["total_bounces"])],
+            ["Soft Bounces", format_integer(metrics["soft_bounces"])],
+            ["Hard Bounces", format_integer(metrics["hard_bounces"])],
+            ["Bounce Rate", format_percent(metrics["bounce_rate"])],
+        ],
+    )
+    open_table = render_table(
+        [],
+        [
+            ["Total Opens", format_integer(metrics["total_opens"])],
+            ["Unique Opens", format_integer(metrics["unique_opens"])],
+            ["Unique Open Rate", format_percent(metrics["open_rate"])],
+            [
+                "Last Opened",
+                format_datetime_label(metrics["last_open"], include_time=True)
+                if metrics["last_open"]
+                else "Not yet available",
+            ],
+        ],
+    )
+    click_table = render_table(
+        [],
+        [
+            ["Total Clicks", format_integer(metrics["total_clicks"])],
+            ["Unique Clicks", format_integer(metrics["unique_clicks"])],
+            [
+                "Recipients Who Clicked",
+                format_integer(metrics["unique_subscriber_clicks"]),
+            ],
+            [
+                "Click Rate (CTR)",
+                format_percent(metrics["click_rate"])
+                if not metrics["clicks_not_applicable"]
+                else "0% — No CTA included",
+            ],
+            [
+                "Click-to-Open Rate",
+                format_percent(metrics["ctor"])
+                if not metrics["clicks_not_applicable"]
+                else "0% — No CTA included",
+            ],
+        ],
+    )
+    trust_table = render_table(
+        [],
+        [
+            [
+                "Unsubscribes",
+                f"{format_integer(metrics['unsubscribes'])} ({format_percent(metrics['unsubscribe_rate'])})",
+            ],
+            ["Abuse Reports", format_integer(metrics["abuse_reports"])],
+            [
+                "Campaign Window",
+                f"{context['send_time_label']} – {context['last_activity_value']}",
+            ],
+        ],
+    )
+    comparison_html = render_table(comparison["headers"], comparison["rows"], wide=True)
+    recommendations_html = "".join(
+        f"<li>{html.escape(item)}</li>" for item in bundle["recommendations"]
+    )
+
+    brand = html.escape(context["brand_name"])
+    title = html.escape(context["title"])
+    subject_line = (
+        html.escape(context["subject_line"]) if context["subject_line"] else ""
+    )
+    header_meta = (
+        f"Send Date: {html.escape(context['send_time_label'])}  |  "
+        f"{html.escape(context['last_activity_label'])}: "
+        f"{html.escape(context['last_activity_value'])}"
+    )
+
+    return f"""<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title} Report</title>
+    <style>
+      body {{
+        margin: 0;
+        padding: 0;
+        background: #ececec;
+        font-family: Arial, sans-serif;
+        color: #000000;
+      }}
+      .page {{
+        width: 100%;
+        background: #ececec;
+        padding: 24px 0;
+      }}
+      .doc {{
+        width: 816px;
+        max-width: 816px;
+        margin: 0 auto;
+        background: #ffffff;
+        padding: 36px;
+        box-sizing: border-box;
+      }}
+      .hero,
+      .hero-sub,
+      .hero-meta {{
+        background: #C0392B;
+        color: #ffffff;
+        text-align: center;
+      }}
+      .hero {{
+        font-size: 18px;
+        font-weight: 700;
+        letter-spacing: 0.4px;
+        padding: 14px 18px 8px;
+      }}
+      .hero-sub {{
+        font-size: 16px;
+        font-weight: 700;
+        padding: 6px 18px;
+      }}
+      .hero-meta {{
+        font-size: 13px;
+        padding: 6px 18px 14px;
+      }}
+      .section-header {{
+        margin-top: 18px;
+        background: #1A1A2E;
+        color: #ffffff;
+        font-size: 14px;
+        font-weight: 700;
+        text-transform: uppercase;
+        padding: 10px 14px;
+      }}
+      .section-title {{
+        margin: 18px 0 8px;
+        color: #1A1A2E;
+        font-size: 16px;
+        font-weight: 700;
+      }}
+      .body-copy {{
+        margin: 0 0 10px;
+        font-size: 13px;
+        line-height: 1.55;
+      }}
+      .summary-box,
+      .callout-box {{
+        background: #F5F5F5;
+        border: 1px solid #d8d8d8;
+        padding: 12px 14px;
+        margin-bottom: 14px;
+      }}
+      .callout-box {{
+        font-style: italic;
+      }}
+      table.report-table {{
+        width: 100%;
+        border-collapse: collapse;
+        margin: 6px 0 14px;
+        table-layout: fixed;
+      }}
+      table.report-table th,
+      table.report-table td {{
+        border: 1px solid #b7b7b7;
+        padding: 10px 12px;
+        font-size: 13px;
+        vertical-align: top;
+        word-wrap: break-word;
+      }}
+      table.report-table th {{
+        background: #1A1A2E;
+        color: #ffffff;
+        font-weight: 700;
+        text-align: left;
+      }}
+      table.report-table tr:nth-child(even) td {{
+        background: #F5F5F5;
+      }}
+      table.report-table.narrow td:first-child {{
+        width: 46%;
+        font-weight: 700;
+      }}
+      ul.recommendations {{
+        margin: 8px 0 0 18px;
+        padding: 0;
+      }}
+      ul.recommendations li {{
+        margin: 0 0 8px;
+        font-size: 13px;
+        line-height: 1.5;
+      }}
+      .footer {{
+        margin-top: 20px;
+        text-align: center;
+        font-size: 12px;
+        color: #666666;
+        font-style: italic;
+      }}
+      .status-good,
+      .status-bad,
+      .status-neutral {{
+        font-weight: 700;
+      }}
+      .subject-line {{
+        margin-top: 8px;
+        font-size: 13px;
+      }}
+      @media only screen and (max-width: 860px) {{
+        .doc {{
+          width: 100%;
+          max-width: 100%;
+          padding: 20px;
+        }}
+      }}
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <div class="doc">
+        <table class="report-table" aria-hidden="true">
+          <tr><td class="hero">EMAIL CAMPAIGN PERFORMANCE DEBRIEF</td></tr>
+          <tr><td class="hero-sub">{brand} | {title}</td></tr>
+          <tr><td class="hero-meta">{header_meta}</td></tr>
+        </table>
+        <div class="section-header">Executive Summary</div>
+        <div class="summary-box">
+          <p class="body-copy">{html.escape(bundle['executive_summary'])}</p>
+          {f'<p class="body-copy subject-line"><strong>Subject Line:</strong> {subject_line}</p>' if subject_line else ''}
+        </div>
+
+        <p class="section-title">Performance Scorecard</p>
+        {scorecard_html}
+
+        <p class="section-title">1. Delivery Performance</p>
+        <p class="body-copy">{html.escape(bundle['delivery_narrative'])}</p>
+        {delivery_table}
+        <div class="callout-box">{html.escape(delivery_assessment(metrics))}</div>
+
+        <p class="section-title">2. Open Performance</p>
+        <p class="body-copy">{html.escape(bundle['open_narrative'])}</p>
+        {open_table}
+        <div class="callout-box">{html.escape(open_assessment(metrics))}</div>
+
+        <p class="section-title">3. Click Performance</p>
+        <p class="body-copy">{html.escape(bundle['click_narrative'])}</p>
+        {click_table}
+        <div class="callout-box">{html.escape(click_assessment(metrics))}</div>
+
+        <p class="section-title">4. Quality &amp; Trust Signals</p>
+        <p class="body-copy">{html.escape(bundle['trust_narrative'])}</p>
+        {trust_table}
+        <div class="callout-box">{html.escape(trust_assessment(metrics))}</div>
+
+        <p class="section-title">{html.escape(context['comparison_heading'])}</p>
+        <p class="body-copy">{html.escape(comparison['summary'])}</p>
+        {comparison_html}
+
+        <p class="section-title">{html.escape(context['recommendations_heading'])}</p>
+        <ul class="recommendations">
+          {recommendations_html}
+        </ul>
+
+        <div class="summary-box">
+          <p class="body-copy">{html.escape(bundle['closing_summary'])}</p>
+        </div>
+
+        <p class="footer">Report prepared automatically | Mailchimp Campaign Reporting | {html.escape(context['current_month_year'])}</p>
+      </div>
+    </div>
+  </body>
+</html>"""
+
+
+def render_report_plain_text(bundle: dict[str, Any]) -> str:
+    metrics = bundle["metrics"]
+    lines = [
+        "EMAIL CAMPAIGN PERFORMANCE DEBRIEF",
+        f"{bundle['context']['brand_name']} | {bundle['context']['title']}",
+        f"Send Date: {bundle['context']['send_time_label']}",
+        "",
+        "EXECUTIVE SUMMARY",
+        bundle["executive_summary"],
+        "",
+        "PERFORMANCE SCORECARD",
+    ]
+    for row in metrics["scorecard_rows"]:
+        lines.append(
+            f"- {row['label']}: {row['result']} ({row['status']}; benchmark {row['benchmark']})"
+        )
+    lines.extend(
+        [
+            "",
+            "DELIVERY PERFORMANCE",
+            bundle["delivery_narrative"],
+            "",
+            "OPEN PERFORMANCE",
+            bundle["open_narrative"],
+            "",
+            "CLICK PERFORMANCE",
+            bundle["click_narrative"],
+            "",
+            "QUALITY & TRUST SIGNALS",
+            bundle["trust_narrative"],
+            "",
+            "CAMPAIGN COMPARISON",
+            bundle["comparison"]["summary"],
+            "",
+            "RECOMMENDATIONS",
+        ]
+    )
+    lines.extend(f"- {item}" for item in bundle["recommendations"])
+    lines.extend(["", "CLOSING SUMMARY", bundle["closing_summary"]])
+    return "\n".join(lines)
+
+
+def render_table(headers: list[str], rows: list[list[str]], wide: bool = False) -> str:
+    table_class = "report-table wide" if wide else "report-table narrow"
+    head_html = ""
+    if headers:
+        head_html = (
+            "<thead><tr>"
+            + "".join(f"<th>{html.escape(item)}</th>" for item in headers)
+            + "</tr></thead>"
+        )
+    body_rows = []
+    for row in rows:
+        cells = []
+        for cell in row:
+            if cell.startswith("<span"):
+                cells.append(f"<td>{cell}</td>")
+            else:
+                cells.append(f"<td>{html.escape(cell)}</td>")
+        body_rows.append("<tr>" + "".join(cells) + "</tr>")
+    return f"<table class=\"{table_class}\">{head_html}<tbody>{''.join(body_rows)}</tbody></table>"
+
+
+def scorecard_row(label: str, result: str, benchmark: str, status: str) -> dict[str, str]:
+    return {"label": label, "result": result, "benchmark": benchmark, "status": status}
+
+
+def status_badge(status: str) -> str:
+    css_class = STATUS_STYLE.get(status, "status-neutral")
+    symbol = {
+        "EXCEEDED": "✓ Exceeded",
+        "MET": "✓ Met",
+        "BELOW": "▼ Below",
+        "N/A": "— N/A",
+    }.get(status, status)
+    return f"<span class=\"{css_class}\">{html.escape(symbol)}</span>"
+
+
+async def send_report_email(env, subject: str, html_body: str, plain_text: str):
+    destination = require_env(env, "MY_EMAIL")
+    sender = get_optional_env(env, "RESEND_FROM_EMAIL") or require_env(
+        env, "REPORT_FROM_EMAIL"
+    )
+    api_key = require_env(env, "RESEND_API_KEY")
+    payload = {
+        "from": sender,
+        "to": [destination],
+        "subject": subject,
+        "html": html_body,
+        "text": plain_text,
+    }
+    response = await fetch(
+        "https://api.resend.com/emails",
+        method="POST",
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        },
+        body=json.dumps(payload),
+    )
+    body_text = await response.text()
+    parsed_body = {}
+    if body_text:
+        try:
+            parsed_body = json.loads(body_text)
+        except json.JSONDecodeError:
+            parsed_body = {"raw": body_text}
+    if response.status >= 400:
+        detail = parsed_body.get("message") or parsed_body.get("name") or body_text
+        raise RuntimeError(f"Resend API request failed ({response.status}): {detail}")
+    log_event(
+        "email_sent",
+        {
+            "provider": "resend",
+            "to": destination,
+            "from": sender,
+            "subject": subject,
+            "email_id": parsed_body.get("id"),
+        },
+    )
+
+
+async def fetch_mailchimp_json(
+    env, path: str, init: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    api_key = require_env(env, "MC_API_KEY")
+    server = require_env(env, "MC_SERVER")
+    base_url = f"https://{server}.api.mailchimp.com/3.0"
+    url = f"{base_url}{path if path.startswith('/') else '/' + path}"
+    authorization = base64.b64encode(f"codex:{api_key}".encode("utf-8")).decode(
+        "utf-8"
+    )
+    request_init = {
+        "method": "GET",
+        "headers": {
+            "Authorization": f"Basic {authorization}",
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+        },
+    }
+    if init:
+        request_init.update(init)
+        if init.get("headers"):
+            request_init["headers"].update(init["headers"])
+
+    for attempt in range(MAX_RETRIES + 1):
+        response = await fetch(url, **request_init)
+        if response.ok:
+            text = await response.text()
+            return json.loads(text or "{}")
+
+        error_body = await safe_error_body(response)
+        if attempt >= MAX_RETRIES or response.status not in (429, 500, 502, 503, 504):
+            raise MailchimpApiError(int(response.status), error_body, url)
+
+        await asyncio.sleep(retry_delay_seconds(response, attempt))
+
+    raise RuntimeError(f"Retries exhausted for {url}")
+
+
+async def safe_error_body(response) -> dict[str, Any]:
+    try:
+        return json.loads(await response.text())
+    except Exception:
+        return {
+            "status": int(response.status),
+            "title": "Mailchimp error",
+            "detail": "Could not parse error response.",
+        }
+
+
+def retry_delay_seconds(response, attempt: int) -> float:
+    retry_after = response.headers.get("retry-after")
+    if retry_after:
+        try:
+            return float(retry_after)
+        except ValueError:
+            pass
+    return min(2**attempt, 8)
+
+
+async def load_all_campaign_records(env) -> list[dict[str, Any]]:
+    records: list[dict[str, Any]] = []
+    cursor = None
+    while True:
+        options = {"prefix": "campaign:"}
+        if cursor:
+            options["cursor"] = cursor
+        page = await env.CAMPAIGNS.list(jsify(options))
+        page_data = to_python(page)
+        keys = page_data.get("keys") or []
+        for item in keys:
+            key_name = item.get("name")
+            if not key_name:
+                continue
+            record = await load_campaign_record(env, key_name)
+            if record:
+                records.append(record)
+        cursor = page_data.get("cursor")
+        if not page_data.get("list_complete") and cursor:
+            continue
+        break
+    records.sort(key=lambda item: (item.get("send_date") or "", item.get("id") or ""))
+    return records
+
+
+async def load_campaign_record(env, key_name: str) -> dict[str, Any] | None:
+    raw = await env.CAMPAIGNS.get(key_name)
+    if not raw:
+        return None
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        return None
+
+
+async def store_campaign_record(env, key_name: str, record: dict[str, Any]):
+    await env.CAMPAIGNS.put(key_name, json.dumps(record, separators=(",", ":")))
+
+
+def select_comparison_records(
+    records: list[dict[str, Any]], current_campaign_id: str
+) -> list[dict[str, Any]]:
+    eligible = [
+        record
+        for record in records
+        if record.get("id") != current_campaign_id
+        and record.get("status") == "reported"
+        and record.get("metrics_snapshot")
+    ]
+    eligible.sort(key=lambda item: (item.get("send_date") or "", item.get("reported_at") or ""))
+    return eligible
+
+
+def record_by_id(records: list[dict[str, Any]], campaign_id: str) -> dict[str, Any] | None:
+    for record in records:
+        if record.get("id") == campaign_id:
+            return record
+    return None
+
+
+def recommendation_heading(title: str) -> str:
+    number = extract_campaign_number(title)
+    if number is not None:
+        return f"6. Recommendations for Campaign {number + 1}"
+    return "6. Recommendations for the Next Campaign"
+
+
+def report_subject(bundle: dict[str, Any]) -> str:
+    return f"Report: {bundle['context']['title']} ({bundle['record']['send_date']})"
+
+
+def is_webhook_path(path: str, secret: str | None) -> bool:
+    if path == "/webhook":
+        return True
+    return bool(secret and path == f"/webhook/{secret}")
+
+
+def is_test_email_path(path: str, secret: str | None) -> bool:
+    return bool(secret and path == f"/email-test/{secret}")
+
+
+def parse_webhook_payload(body: str, content_type: str) -> dict[str, str]:
+    body = body or ""
+    if "application/json" in content_type:
+        parsed = json.loads(body or "{}")
+        return flatten_payload(parsed)
+    flat = {}
+    for key, values in parse_qs(body, keep_blank_values=True).items():
+        value = values[-1] if values else ""
+        flat[key] = value
+        flat[normalize_form_key(key)] = value
+    return flat
+
+
+def flatten_payload(
+    value: Any, prefix: str = "", output: dict[str, str] | None = None
+) -> dict[str, str]:
+    output = output or {}
+    if isinstance(value, dict):
+        for key, nested in value.items():
+            new_prefix = f"{prefix}.{key}" if prefix else str(key)
+            flatten_payload(nested, new_prefix, output)
+    elif isinstance(value, list):
+        if value:
+            flatten_payload(value[0], prefix, output)
+    elif prefix:
+        output[prefix] = "" if value is None else str(value)
+    return output
+
+
+def normalize_form_key(key: str) -> str:
+    return key.replace("[", ".").replace("]", "").strip(".")
+
+
+def first_value(payload: dict[str, str], *keys: str) -> str | None:
+    for key in keys:
+        value = payload.get(key)
+        if value is not None and str(value).strip():
+            return str(value).strip()
+    return None
+
+
+def nested_get(data: dict[str, Any] | None, *keys: str) -> Any:
+    current = data
+    for key in keys:
+        if not isinstance(current, dict):
+            return None
+        current = current.get(key)
+    return current
+
+
+def infer_clicks_not_applicable(
+    campaign: dict[str, Any], total_clicks: int, unique_clicks: int
+) -> bool:
+    if total_clicks or unique_clicks:
+        return False
+    text = " ".join(
+        filter(
+            None,
+            [
+                nested_get(campaign, "settings", "title"),
+                nested_get(campaign, "settings", "subject_line"),
+                nested_get(campaign, "settings", "preview_text"),
+            ],
+        )
+    ).lower()
+    return any(
+        token in text for token in ("intro", "introduction", "awareness", "launch", "debut")
+    )
+
+
+def comparison_label(campaign: dict[str, Any]) -> str:
+    title = (
+        nested_get(campaign, "settings", "title")
+        or campaign.get("title")
+        or campaign.get("id")
+        or "Campaign"
+    )
+    number = extract_campaign_number(title)
+    if number is not None:
+        return f"Campaign {number}"
+    send_time = normalize_send_date(campaign.get("send_time"))
+    short_title = title if len(title) <= 26 else f"{title[:23]}..."
+    return f"{short_title} ({send_time})" if send_time else short_title
+
+
+def extract_campaign_number(title: str | None) -> int | None:
+    if not title:
+        return None
+    match = CAMPAIGN_NUMBER_RE.search(title)
+    if not match:
+        return None
+    try:
+        return int(match.group(1))
+    except ValueError:
+        return None
+
+
+def extract_segment_name(segment_text: str | None) -> str:
+    if not segment_text:
+        return "campaign audience"
+    plain = WHITESPACE_RE.sub(
+        " ", html.unescape(STRIP_TAGS_RE.sub(" ", segment_text))
+    ).strip()
+    tag_match = TAGGED_SEGMENT_RE.search(plain)
+    if tag_match:
+        return tag_match.group(1).strip() + " segment"
+    if "for a total of" in plain:
+        plain = plain.split("for a total of", 1)[0].strip()
+    return plain or "campaign audience"
+
+
+def delivery_assessment(metrics: dict[str, Any]) -> str:
+    if metrics["bounce_rate"] > 5:
+        return (
+            f"A bounce rate of {format_percent(metrics['bounce_rate'])} is above the accepted 5% threshold and should be addressed before the next send. "
+            "Hard bounces need immediate suppression, while repeated soft bounces should be monitored closely."
+        )
+    if metrics["hard_bounces"] > 0:
+        return (
+            f"The overall bounce rate is within range, but the {format_integer(metrics['hard_bounces'])} hard bounce{'es' if metrics['hard_bounces'] != 1 else ''} "
+            "should still be removed immediately to preserve deliverability."
+        )
+    return (
+        f"A bounce rate of {format_percent(metrics['bounce_rate'])} is comfortably within acceptable limits and reflects a healthy list foundation for the next campaign."
+    )
+
+
+def open_assessment(metrics: dict[str, Any]) -> str:
+    if metrics["open_rate"] >= 30:
+        return (
+            f"The {format_percent(metrics['open_rate'])} unique open rate is a strong result and suggests the subject line and audience targeting were well aligned."
+        )
+    if metrics["open_rate"] >= 25:
+        return (
+            f"The {format_percent(metrics['open_rate'])} unique open rate meets a healthy benchmark and provides a stable base to build stronger click performance."
+        )
+    return (
+        f"The {format_percent(metrics['open_rate'])} unique open rate sits below the stronger B2B benchmark range, which makes subject line testing and tighter audience framing the clearest next levers."
+    )
+
+
+def click_assessment(metrics: dict[str, Any]) -> str:
+    if metrics["clicks_not_applicable"]:
+        return (
+            "That outcome is acceptable for a pure awareness send, but future campaigns should introduce a deliberate CTA once the audience is ready to convert."
+        )
+    if metrics["click_rate"] >= 6 or metrics["ctor"] >= 20:
+        return (
+            f"The campaign is translating attention into action exceptionally well, with a {format_percent(metrics['click_rate'])} CTR and {format_percent(metrics['ctor'])} CTOR."
+        )
+    if metrics["click_rate"] >= 3 and metrics["ctor"] >= 8:
+        return (
+            "Click efficiency is healthy, but there is still room to increase conversion volume through stronger CTA placement or a more direct offer."
+        )
+    return (
+        "Click performance is lagging behind the healthier benchmark range, which usually points to CTA friction, offer clarity, or mismatch between the message and the next step."
+    )
+
+
+def trust_assessment(metrics: dict[str, Any]) -> str:
+    if metrics["abuse_reports"] == 0 and metrics["unsubscribe_rate"] <= 0.5:
+        return (
+            "These trust signals are clean and support continued deliverability, indicating recipients did not experience the message as irrelevant or abusive."
+        )
+    if metrics["abuse_reports"] > 0:
+        return (
+            "Abuse complaints need immediate review because they are one of the fastest ways to damage inbox placement and sender trust."
+        )
+    return (
+        "The trust profile is still workable, but unsubscribe behavior should be reviewed so the next send is more tightly aligned to recipient expectations."
+    )
+
+
+def delivery_status(rate: float) -> str:
+    if rate >= 98:
+        return "EXCEEDED"
+    if rate >= 95:
+        return "MET"
+    return "BELOW"
+
+
+def bounce_status(rate: float) -> str:
+    if rate <= 2.5:
+        return "EXCEEDED"
+    if rate <= 5:
+        return "MET"
+    return "BELOW"
+
+
+def open_status(rate: float) -> str:
+    if rate >= 35:
+        return "EXCEEDED"
+    if rate >= 25:
+        return "MET"
+    return "BELOW"
+
+
+def click_status(rate: float) -> str:
+    if rate >= 5:
+        return "EXCEEDED"
+    if rate >= 3:
+        return "MET"
+    return "BELOW"
+
+
+def ctor_status(rate: float) -> str:
+    if rate >= 12:
+        return "EXCEEDED"
+    if rate >= 8:
+        return "MET"
+    return "BELOW"
+
+
+def unsubscribe_status(rate: float) -> str:
+    if rate == 0:
+        return "EXCEEDED"
+    if rate <= 0.5:
+        return "MET"
+    return "BELOW"
+
+
+def abuse_status(total: int) -> str:
+    return "EXCEEDED" if total == 0 else "BELOW"
+
+
+def trend_symbol(
+    metric_key: str, previous: dict[str, Any] | None, current: dict[str, Any]
+) -> str:
+    if not previous:
+        return "—"
+    previous_value = previous.get(metric_key)
+    current_value = current.get(metric_key)
+    if previous_value == current_value:
+        return "—"
+    higher_is_better = metric_key not in {
+        "bounce_rate",
+        "unsubscribes",
+        "unsubscribe_rate",
+        "abuse_reports",
+    }
+    improved = current_value > previous_value if higher_is_better else current_value < previous_value
+    return "▲" if improved else "▼"
+
+
+def format_comparison_value(metric_key: str, snapshot: dict[str, Any]) -> str:
+    value = snapshot.get(metric_key)
+    if metric_key in {"deliveries", "unsubscribes", "abuse_reports"}:
+        return format_integer(value)
+    return format_percent(value)
+
+
+def best_metric_from_snapshot(snapshot: dict[str, Any]) -> str:
+    best_metric = "open_rate"
+    best_score = snapshot.get("unique_open_rate", 0)
+    if snapshot.get("click_rate", 0) > best_score:
+        best_metric = "click_rate"
+        best_score = snapshot.get("click_rate", 0)
+    if snapshot.get("bounce_rate", 100) < 3:
+        best_metric = "bounce_rate"
+    return best_metric
+
+
+def parse_iso_datetime(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    if text.endswith("Z"):
+        text = text[:-1] + "+00:00"
+    try:
+        parsed = datetime.fromisoformat(text)
+        if parsed.tzinfo is None:
+            return parsed.replace(tzinfo=timezone.utc)
+        return parsed.astimezone(timezone.utc)
+    except ValueError:
+        try:
+            parsed = datetime.fromisoformat(text + "T00:00:00+00:00")
+            return parsed.astimezone(timezone.utc)
+        except ValueError:
+            return None
+
+
+def normalize_send_date(value: str | None) -> str:
+    parsed = parse_iso_datetime(value)
+    if parsed:
+        return parsed.date().isoformat()
+    if value and re.match(r"^\d{4}-\d{2}-\d{2}$", str(value).strip()):
+        return str(value).strip()
+    return utc_now().date().isoformat()
+
+
+def format_datetime_label(value: datetime | None, include_time: bool) -> str:
+    if not value:
+        return "Not yet available"
+    if include_time:
+        hour = value.hour % 12 or 12
+        meridiem = "AM" if value.hour < 12 else "PM"
+        return f"{value.strftime('%B %d, %Y')}, {hour}:{value.minute:02d} {meridiem} UTC"
+    return value.strftime("%B %d, %Y")
+
+
+def json_response(payload: dict[str, Any], status: int = 200) -> Response:
+    return Response(
+        json.dumps(payload, separators=(",", ":"), ensure_ascii=False),
+        headers={"Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store"},
+        status=status,
+    )
+
+
+def html_response(body: str, status: int = 200) -> Response:
+    return Response(
+        body,
+        headers={"Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store"},
+        status=status,
+    )
+
+
+def require_env(env, key: str) -> str:
+    value = get_optional_env(env, key)
+    if value is None or str(value).strip() == "":
+        raise RuntimeError(f"Missing required environment variable: {key}")
+    return str(value).strip()
+
+
+def get_optional_env(env, key: str) -> str | None:
+    value = getattr(env, key, None)
+    if value is None:
+        return None
+    return str(value)
+
+
+def percent(explicit_value: Any, numerator: int, denominator: int) -> float:
+    if explicit_value not in (None, ""):
+        raw = as_float(explicit_value)
+        if raw <= 1:
+            return round(raw * 100, 1)
+        return round(raw, 1)
+    if denominator <= 0:
+        return 0.0
+    return round((numerator / denominator) * 100, 1)
+
+
+def as_int(value: Any) -> int:
+    try:
+        if value in (None, ""):
+            return 0
+        return int(float(value))
+    except (TypeError, ValueError):
+        return 0
+
+
+def as_float(value: Any) -> float:
+    try:
+        if value in (None, ""):
+            return 0.0
+        return float(value)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def format_percent(value: Any) -> str:
+    number = as_float(value)
+    if abs(number - round(number)) < 0.05:
+        return f"{round(number):.0f}%"
+    return f"{number:.1f}%"
+
+
+def format_signed_percent(value: float) -> str:
+    sign = "+" if value > 0 else ""
+    return f"{sign}{value:.1f}%"
+
+
+def format_integer(value: Any) -> str:
+    return f"{as_int(value):,}"
+
+
+def chunked(items: list[Any], size: int) -> list[list[Any]]:
+    return [items[index : index + size] for index in range(0, len(items), size)]
+
+
+def campaign_kv_key(campaign_id: str) -> str:
+    return f"campaign:{campaign_id}"
+
+
+def utc_now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def iso_now() -> str:
+    return utc_now().replace(microsecond=0).isoformat()
+
+
+def normalize_token(value: str | None) -> str | None:
+    if not value:
+        return None
+    return value.strip().lower().replace("-", "_").replace(" ", "_")
+
+
+def query_truthy(query: dict[str, list[str]], key: str) -> bool:
+    return any(item.lower() in {"1", "true", "yes", "send"} for item in query.get(key, []))
+
+
+def to_python(value: Any) -> Any:
+    if hasattr(value, "to_py"):
+        return value.to_py()
+    return value
+
+
+def jsify(value: Any) -> Any:
+    return to_js(value, depth=-1, dict_converter=Object.fromEntries)
+
+
+def log_event(event: str, payload: dict[str, Any]):
+    print(json.dumps({"timestamp": iso_now(), "event": event, **payload}, ensure_ascii=False))

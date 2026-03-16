@@ -1,0 +1,13 @@
+name = "mailchimp-reports-worker"
+main = "src/index.py"
+compatibility_date = "2026-03-16"
+compatibility_flags = ["python_workers"]
+workers_dev = true
+
+[[kv_namespaces]]
+binding = "CAMPAIGNS"
+id = "5fec1ba15487424ea90225509a4f85f9"
+preview_id = "48b06f20146c498e84a8c739acf71ff2"
+
+[triggers]
+crons = ["0 9 * * *"]
