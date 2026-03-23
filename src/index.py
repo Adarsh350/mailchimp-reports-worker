@@ -17,6 +17,9 @@ from workers import Response, WorkerEntrypoint, fetch
 MAX_RETRIES = 4
 MAX_WEBHOOK_BODY_BYTES = 128 * 1024
 PROCESS_BATCH_SIZE = 4
+DASHBOARD_RUN_LIMIT = 12
+DASHBOARD_CAMPAIGN_LIMIT = 16
+RECENT_SENT_CAMPAIGN_LIMIT = 5
 METRIC_LABELS = {
     "deliveries": "Emails Delivered",
     "delivery_rate": "Delivery Rate",
@@ -56,7 +59,7 @@ class Default(WorkerEntrypoint):
         query = parse_qs(url.query, keep_blank_values=True)
 
         try:
-            if request.method == "GET" and path in {"/", "/healthz"}:
+            if request.method == "GET" and path == "/healthz":
                 return json_response(
                     {
                         "ok": True,
@@ -67,6 +70,12 @@ class Default(WorkerEntrypoint):
                         ),
                     }
                 )
+
+            if request.method == "GET" and path in {"/", "/dashboard"}:
+                return html_response(render_dashboard_shell())
+
+            if request.method == "GET" and path == "/api/dashboard":
+                return await self.handle_dashboard_api()
 
             if request.method in {"GET", "HEAD"} and is_webhook_path(
                 path, get_optional_env(self.env, "MAILCHIMP_WEBHOOK_SECRET")
@@ -270,6 +279,10 @@ class Default(WorkerEntrypoint):
             }
         )
 
+    async def handle_dashboard_api(self):
+        payload = await build_dashboard_payload(self.env)
+        return json_response(payload)
+
     async def process_due_campaigns(self, scheduled_time):
         now_utc = (
             utc_now()
@@ -284,6 +297,21 @@ class Default(WorkerEntrypoint):
             if record.get("status") == "pending"
             and record.get("send_date") == target_date
         ]
+        run_record = {
+            "id": run_id_for_time(now_utc),
+            "trigger": "scheduled",
+            "status": "running",
+            "started_at": now_utc.replace(microsecond=0).isoformat(),
+            "target_date": target_date,
+            "cron_schedule": "0 9 * * *",
+            "total_cached_campaigns": len(all_records),
+            "pending_campaigns": len(due_records),
+            "processed_campaigns": 0,
+            "successful_campaigns": 0,
+            "failed_campaigns": 0,
+            "campaigns": [],
+        }
+        await store_run_record(self.env, run_record)
 
         log_event(
             "scheduled_scan_completed",
@@ -295,10 +323,34 @@ class Default(WorkerEntrypoint):
         )
 
         for chunk in chunked(due_records, PROCESS_BATCH_SIZE):
-            await asyncio.gather(
+            results = await asyncio.gather(
                 *(self.process_one_due_campaign(record, all_records) for record in chunk),
                 return_exceptions=True,
             )
+            for result in results:
+                if isinstance(result, Exception):
+                    run_record["failed_campaigns"] += 1
+                    run_record["campaigns"].append(
+                        {"status": "failed", "title": "Unhandled exception", "error": str(result)}
+                    )
+                    continue
+                run_record["processed_campaigns"] += 1
+                if result.get("status") == "reported":
+                    run_record["successful_campaigns"] += 1
+                elif result.get("status") == "failed":
+                    run_record["failed_campaigns"] += 1
+                run_record["campaigns"].append(result)
+
+        if not due_records:
+            run_record["status"] = "idle"
+        elif run_record["failed_campaigns"] and run_record["successful_campaigns"]:
+            run_record["status"] = "partial"
+        elif run_record["failed_campaigns"]:
+            run_record["status"] = "failed"
+        else:
+            run_record["status"] = "reported"
+        run_record["completed_at"] = iso_now()
+        await store_run_record(self.env, run_record)
 
     async def process_one_due_campaign(
         self, record: dict[str, Any], cached_records: list[dict[str, Any]]
@@ -326,6 +378,13 @@ class Default(WorkerEntrypoint):
                     "send_date": stored_record["send_date"],
                 },
             )
+            return {
+                "campaign_id": campaign_id,
+                "title": stored_record["title"],
+                "send_date": stored_record["send_date"],
+                "status": "reported",
+                "reported_at": stored_record.get("reported_at"),
+            }
         except Exception as error:
             record["last_error"] = str(error)
             record["last_attempted_at"] = iso_now()
@@ -334,6 +393,14 @@ class Default(WorkerEntrypoint):
                 "campaign_report_failed",
                 {"campaign_id": campaign_id, "error": str(error)},
             )
+            return {
+                "campaign_id": campaign_id,
+                "title": record.get("title") or campaign_id,
+                "send_date": record.get("send_date"),
+                "status": "failed",
+                "error": str(error),
+                "attempted_at": record.get("last_attempted_at"),
+            }
 
 
 def build_campaign_record(
@@ -859,6 +926,636 @@ def build_comparison_bundle(
     }
 
 
+def render_dashboard_shell() -> str:
+    return """<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Mailchimp Reports Worker Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #f6f7fb;
+      --surface: rgba(255,255,255,0.88);
+      --surface-strong: #ffffff;
+      --ink: #0f172a;
+      --muted: #58657a;
+      --line: rgba(12, 22, 41, 0.09);
+      --good: #0d9488;
+      --warn: #d97706;
+      --bad: #dc2626;
+      --neutral: #475569;
+      --accent: #0f62fe;
+      --accent-2: #14b8a6;
+      --lavender: #eef2ff;
+      --shadow: 0 28px 80px rgba(15, 23, 42, 0.10);
+      --radius-xl: 28px;
+      --radius-lg: 20px;
+      --radius-md: 16px;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; min-height: 100%; background:
+      radial-gradient(circle at top left, rgba(15,98,254,0.10), transparent 32%),
+      radial-gradient(circle at top right, rgba(20,184,166,0.08), transparent 24%),
+      linear-gradient(180deg, #fbfcff 0%, #f3f6fb 100%);
+      color: var(--ink); }
+    body {
+      font-family: "IBM Plex Sans", sans-serif;
+      padding: 28px;
+    }
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(15, 23, 42, 0.04) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(15, 23, 42, 0.04) 1px, transparent 1px);
+      background-size: 36px 36px;
+      mask-image: linear-gradient(180deg, rgba(0,0,0,0.55), transparent 88%);
+      pointer-events: none;
+    }
+    a { color: inherit; text-decoration: none; }
+    .shell { max-width: 1480px; margin: 0 auto; position: relative; z-index: 1; }
+    .topbar {
+      display: flex; justify-content: space-between; align-items: center; gap: 18px;
+      margin-bottom: 22px;
+    }
+    .brand {
+      display: flex; align-items: center; gap: 14px;
+    }
+    .brand-mark {
+      width: 46px; height: 46px; border-radius: 14px;
+      background: linear-gradient(135deg, #0f62fe, #14b8a6);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.4), 0 18px 28px rgba(15,98,254,0.24);
+      position: relative;
+    }
+    .brand-mark::after {
+      content: "";
+      position: absolute; inset: 11px;
+      border-radius: 10px;
+      border: 2px solid rgba(255,255,255,0.85);
+      border-bottom-width: 4px;
+    }
+    .eyebrow, .micro {
+      color: var(--muted); letter-spacing: 0.08em; text-transform: uppercase; font-size: 11px;
+    }
+    h1, h2, h3, h4 { font-family: "Space Grotesk", sans-serif; margin: 0; letter-spacing: -0.03em; }
+    h1 { font-size: clamp(2rem, 3vw, 3.6rem); line-height: 0.98; margin-top: 14px; max-width: 10ch; }
+    p { margin: 0; color: var(--muted); line-height: 1.58; }
+    .toolbar { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+    .btn {
+      border: 1px solid var(--line); background: rgba(255,255,255,0.82);
+      color: var(--ink); padding: 12px 16px; border-radius: 999px;
+      font-weight: 600; font-size: 14px; cursor: pointer; transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease;
+      box-shadow: 0 8px 20px rgba(15, 23, 42, 0.05);
+    }
+    .btn:hover { transform: translateY(-1px); box-shadow: 0 16px 28px rgba(15,23,42,0.08); border-color: rgba(15,98,254,0.25); }
+    .btn.primary { background: linear-gradient(135deg, #0f62fe, #235ef3); color: white; border-color: transparent; }
+    .btn.ghost { background: transparent; box-shadow: none; }
+    .hero {
+      display: grid; grid-template-columns: 1.35fr 0.95fr; gap: 18px; margin-bottom: 18px;
+    }
+    .panel {
+      background: var(--surface);
+      backdrop-filter: blur(14px);
+      border: 1px solid rgba(255,255,255,0.7);
+      border-radius: var(--radius-xl);
+      box-shadow: var(--shadow);
+    }
+    .hero-main {
+      padding: 32px; position: relative; overflow: hidden;
+      background:
+        radial-gradient(circle at 0% 0%, rgba(15,98,254,0.22), transparent 33%),
+        radial-gradient(circle at 90% 0%, rgba(20,184,166,0.18), transparent 28%),
+        rgba(255,255,255,0.78);
+    }
+    .hero-main::after {
+      content: "";
+      position: absolute; right: -120px; top: -120px; width: 320px; height: 320px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(15,98,254,0.18), transparent 72%);
+      pointer-events: none;
+    }
+    .hero-copy { max-width: 720px; }
+    .hero-copy p { margin-top: 16px; max-width: 58ch; font-size: 15px; }
+    .status-row { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 22px; }
+    .badge {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 8px 12px; border-radius: 999px; font-size: 13px; font-weight: 600;
+      border: 1px solid var(--line); background: rgba(255,255,255,0.66);
+    }
+    .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--neutral); box-shadow: 0 0 0 6px rgba(71,85,105,0.12); }
+    .good .dot { background: var(--good); box-shadow: 0 0 0 6px rgba(13,148,136,0.12); }
+    .warn .dot { background: var(--warn); box-shadow: 0 0 0 6px rgba(217,119,6,0.12); }
+    .bad .dot { background: var(--bad); box-shadow: 0 0 0 6px rgba(220,38,38,0.12); }
+    .hero-aside {
+      padding: 24px; display: flex; flex-direction: column; gap: 16px;
+      background:
+        linear-gradient(180deg, rgba(255,255,255,0.92), rgba(248,250,255,0.94));
+    }
+    .signal-card {
+      border: 1px solid rgba(12,22,41,0.08); border-radius: var(--radius-lg); padding: 18px;
+      background: var(--surface-strong);
+    }
+    .signal-grid, .stats-grid {
+      display: grid; gap: 16px;
+    }
+    .signal-grid { grid-template-columns: 1fr 1fr; }
+    .signal-value { font: 700 2rem/1 "Space Grotesk", sans-serif; margin-top: 10px; }
+    .signal-meta { margin-top: 8px; font-size: 13px; }
+    .stats-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); margin-bottom: 18px; }
+    .stat-card {
+      padding: 22px; min-height: 148px; position: relative; overflow: hidden;
+    }
+    .stat-card::after {
+      content: ""; position: absolute; inset: auto -40px -40px auto; width: 110px; height: 110px;
+      background: radial-gradient(circle, rgba(15,98,254,0.10), transparent 66%);
+      border-radius: 50%;
+    }
+    .stat-card h3 { font-size: 14px; color: var(--muted); font-family: "IBM Plex Sans", sans-serif; font-weight: 600; letter-spacing: 0; }
+    .stat-value { margin-top: 18px; font: 700 2.25rem/1 "Space Grotesk", sans-serif; }
+    .tone-good { color: var(--good); }
+    .tone-warn { color: var(--warn); }
+    .tone-bad { color: var(--bad); }
+    .tone-neutral { color: var(--neutral); }
+    .layout {
+      display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 18px; align-items: start;
+    }
+    .stack { display: grid; gap: 18px; }
+    .section { padding: 24px; }
+    .section-head {
+      display: flex; justify-content: space-between; align-items: flex-start; gap: 16px;
+      margin-bottom: 18px;
+    }
+    .section-subtitle { margin-top: 8px; font-size: 14px; }
+    .chart-card { padding: 0; overflow: hidden; }
+    .chart-head { padding: 24px 24px 0; }
+    .chart-wrap { padding: 12px 20px 22px; }
+    svg.spark { width: 100%; height: 180px; display: block; }
+    .legend { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 14px; }
+    .legend-item { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
+    .legend-line { width: 18px; height: 3px; border-radius: 999px; }
+    .run-list, .step-list { display: grid; gap: 14px; }
+    .run-card {
+      border: 1px solid rgba(12,22,41,0.08);
+      border-radius: var(--radius-lg);
+      background: rgba(255,255,255,0.82);
+      padding: 16px 18px;
+    }
+    .run-top, .coverage-row, .mini-grid, .campaign-meta {
+      display: flex; justify-content: space-between; gap: 12px; align-items: center; flex-wrap: wrap;
+    }
+    .pill {
+      border-radius: 999px; padding: 7px 11px; font-size: 12px; font-weight: 700;
+      background: var(--lavender); color: #31456c; border: 1px solid rgba(49,69,108,0.12);
+    }
+    .pill.good { background: rgba(13,148,136,0.12); color: var(--good); }
+    .pill.warn { background: rgba(217,119,6,0.12); color: var(--warn); }
+    .pill.bad { background: rgba(220,38,38,0.12); color: var(--bad); }
+    .mini-grid { margin-top: 14px; }
+    .mini-stat {
+      min-width: 120px; flex: 1 1 120px; border: 1px solid rgba(12,22,41,0.06);
+      border-radius: 14px; padding: 12px 14px; background: rgba(246,248,252,0.92);
+    }
+    .mini-stat strong { display: block; font: 700 1.2rem/1 "Space Grotesk", sans-serif; margin-bottom: 6px; }
+    .activity {
+      display: grid; gap: 16px;
+    }
+    .campaign-filter { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; }
+    .chip {
+      padding: 9px 12px; border-radius: 999px; border: 1px solid var(--line);
+      background: rgba(255,255,255,0.7); cursor: pointer; font-size: 13px; font-weight: 600;
+    }
+    .chip.active { background: rgba(15,98,254,0.12); color: var(--accent); border-color: rgba(15,98,254,0.2); }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { text-align: left; padding: 14px 10px; border-bottom: 1px solid rgba(12,22,41,0.08); vertical-align: top; }
+    th { color: var(--muted); font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; font-weight: 700; }
+    td { font-size: 14px; }
+    .campaign-title { font-weight: 700; color: var(--ink); margin-bottom: 6px; }
+    .campaign-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+    .action-link {
+      display: inline-flex; align-items: center; gap: 8px; border: 1px solid var(--line);
+      padding: 9px 11px; border-radius: 12px; font-size: 12px; font-weight: 700; background: rgba(255,255,255,0.8);
+    }
+    .action-link:hover { border-color: rgba(15,98,254,0.24); }
+    .explainer-card, .coverage-card {
+      padding: 22px;
+    }
+    .step {
+      border: 1px solid rgba(12,22,41,0.08);
+      background: rgba(255,255,255,0.8);
+      border-radius: var(--radius-lg);
+      padding: 18px;
+    }
+    .step h4 { font-size: 1rem; margin-bottom: 8px; }
+    .coverage-list { display: grid; gap: 12px; margin-top: 14px; }
+    .coverage-row {
+      border: 1px solid rgba(12,22,41,0.08);
+      border-radius: 16px;
+      padding: 14px 16px;
+      background: rgba(255,255,255,0.82);
+    }
+    .coverage-row strong { display: block; margin-bottom: 4px; }
+    .alert {
+      margin-top: 14px; padding: 14px 16px; border-radius: 16px;
+      border: 1px solid rgba(217,119,6,0.18);
+      background: rgba(251, 191, 36, 0.08);
+      color: #92400e;
+      font-size: 14px;
+    }
+    .footer-note { margin-top: 18px; text-align: right; font-size: 12px; color: var(--muted); }
+    .skeleton {
+      position: relative; overflow: hidden; min-height: 180px;
+      background: rgba(255,255,255,0.7);
+      border-radius: var(--radius-xl); border: 1px solid rgba(255,255,255,0.7);
+      box-shadow: var(--shadow);
+    }
+    .skeleton::after {
+      content: ""; position: absolute; inset: 0;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.65), transparent);
+      transform: translateX(-100%); animation: shimmer 1.5s infinite;
+    }
+    .toast {
+      position: fixed; right: 28px; bottom: 28px; z-index: 50;
+      background: rgba(15,23,42,0.94); color: white; padding: 14px 16px; border-radius: 16px;
+      box-shadow: 0 18px 40px rgba(15,23,42,0.28); opacity: 0; transform: translateY(8px);
+      transition: all .24s ease;
+      pointer-events: none;
+    }
+    .toast.show { opacity: 1; transform: translateY(0); }
+    @keyframes shimmer { to { transform: translateX(100%); } }
+    @media (max-width: 1180px) {
+      .hero, .layout { grid-template-columns: 1fr; }
+      .stats-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+    @media (max-width: 760px) {
+      body { padding: 16px; }
+      .hero-main, .hero-aside, .section, .explainer-card, .coverage-card { padding: 20px; }
+      .stats-grid { grid-template-columns: 1fr; }
+      .topbar, .section-head { flex-direction: column; align-items: flex-start; }
+      th:nth-child(4), td:nth-child(4), th:nth-child(5), td:nth-child(5) { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <div class="topbar">
+      <div class="brand">
+        <div class="brand-mark"></div>
+        <div>
+          <div class="eyebrow">AI Automation Console</div>
+          <h2>Mailchimp Reports Worker</h2>
+        </div>
+      </div>
+      <div class="toolbar">
+        <button class="btn ghost" id="autoRefreshLabel" type="button">Auto refresh every 60s</button>
+        <button class="btn primary" id="refreshButton" type="button">Refresh live state</button>
+      </div>
+    </div>
+
+    <div id="dashboardRoot">
+      <div class="skeleton"></div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    const state = { filter: "all", data: null, loading: false };
+    const root = document.getElementById("dashboardRoot");
+    const refreshButton = document.getElementById("refreshButton");
+    const toast = document.getElementById("toast");
+
+    function showToast(message, tone = "default") {
+      toast.textContent = message;
+      toast.style.background = tone === "bad" ? "rgba(127, 29, 29, 0.96)" : "rgba(15,23,42,0.94)";
+      toast.classList.add("show");
+      clearTimeout(showToast.timer);
+      showToast.timer = setTimeout(() => toast.classList.remove("show"), 2800);
+    }
+
+    function formatDate(value, withTime = true) {
+      if (!value) return "Not available";
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return value;
+      return new Intl.DateTimeFormat(undefined, {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+        hour: withTime ? "numeric" : undefined,
+        minute: withTime ? "2-digit" : undefined,
+      }).format(date);
+    }
+
+    function formatPercent(value) {
+      if (value === null || value === undefined || value === "") return "—";
+      const numeric = Number(value);
+      if (Number.isNaN(numeric)) return value;
+      return `${numeric.toFixed(Math.abs(numeric - Math.round(numeric)) < 0.05 ? 0 : 1)}%`;
+    }
+
+    function toneClass(tone) {
+      return tone === "good" ? "tone-good" : tone === "warn" ? "tone-warn" : tone === "bad" ? "tone-bad" : "tone-neutral";
+    }
+
+    function pillClass(status) {
+      if (["reported", "healthy", "configured", "verified", "live"].includes(String(status))) return "pill good";
+      if (["pending", "partial", "idle", "open", "awaiting_first_run", "stale"].includes(String(status))) return "pill warn";
+      if (["failed", "missing", "error"].includes(String(status))) return "pill bad";
+      return "pill";
+    }
+
+    function sparklineSvg(runs) {
+      const values = runs.map((run) => run.successful_campaigns - run.failed_campaigns);
+      if (!values.length) {
+        return `<div class="signal-card"><div class="micro">Run telemetry</div><div class="signal-value">No runs yet</div><p class="signal-meta">Once the daily cron executes, this panel will start plotting automation quality over time.</p></div>`;
+      }
+      const min = Math.min(...values, 0);
+      const max = Math.max(...values, 1);
+      const points = values.map((value, index) => {
+        const x = values.length === 1 ? 280 : (index / (values.length - 1)) * 560 + 20;
+        const y = 150 - ((value - min) / ((max - min) || 1)) * 110;
+        return `${x},${y}`;
+      }).join(" ");
+      const area = `20,170 ${points} 580,170`;
+      return `
+        <div class="panel chart-card">
+          <div class="chart-head">
+            <div class="eyebrow">Automation telemetry</div>
+            <h3>Run quality over time</h3>
+            <p class="section-subtitle">A quick read on whether the daily automation is completing cleanly, partially, or with failures.</p>
+            <div class="legend">
+              <span class="legend-item"><span class="legend-line" style="background:#0f62fe"></span> net successful campaigns per run</span>
+            </div>
+          </div>
+          <div class="chart-wrap">
+            <svg class="spark" viewBox="0 0 600 180" preserveAspectRatio="none" aria-hidden="true">
+              <defs>
+                <linearGradient id="sparkFill" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stop-color="rgba(15,98,254,0.35)"></stop>
+                  <stop offset="100%" stop-color="rgba(15,98,254,0.02)"></stop>
+                </linearGradient>
+              </defs>
+              <path d="M ${area}" fill="url(#sparkFill)"></path>
+              <polyline fill="none" stroke="#0f62fe" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" points="${points}"></polyline>
+            </svg>
+          </div>
+        </div>`;
+    }
+
+    function renderOverviewCards(cards) {
+      return cards.map((card) => `
+        <div class="panel stat-card">
+          <h3>${card.label}</h3>
+          <div class="stat-value ${toneClass(card.tone)}">${card.value}</div>
+          <p class="section-subtitle">${card.meta || ""}</p>
+        </div>
+      `).join("");
+    }
+
+    function renderRuns(runs) {
+      if (!runs.length) {
+        return `<div class="run-card"><strong>No scheduled runs yet</strong><p class="section-subtitle">The cron history will appear here after the next 09:00 UTC execution.</p></div>`;
+      }
+      return runs.map((run) => `
+        <div class="run-card">
+          <div class="run-top">
+            <div>
+              <div class="micro">Target window</div>
+              <strong>${run.target_date || "—"}</strong>
+              <p class="section-subtitle">Started ${formatDate(run.started_at)}</p>
+            </div>
+            <span class="${pillClass(run.status)}">${String(run.status).replaceAll("_", " ")}</span>
+          </div>
+          <div class="mini-grid">
+            <div class="mini-stat"><strong>${run.pending_campaigns}</strong><span class="micro">pending</span></div>
+            <div class="mini-stat"><strong>${run.processed_campaigns}</strong><span class="micro">processed</span></div>
+            <div class="mini-stat"><strong>${run.successful_campaigns}</strong><span class="micro">sent</span></div>
+            <div class="mini-stat"><strong>${run.failed_campaigns}</strong><span class="micro">failed</span></div>
+          </div>
+        </div>
+      `).join("");
+    }
+
+    function renderCoverage(items, gapCount) {
+      const rows = items.length ? items.map((item) => `
+        <div class="coverage-row">
+          <div>
+            <strong>${item.title}</strong>
+            <div class="section-subtitle">${formatDate(item.send_time)} · ${item.subject_line || "No subject line"}</div>
+          </div>
+          <span class="${pillClass(item.tracked ? item.tracked_status : "missing")}">${item.tracked ? item.tracked_status : "missing in KV"}</span>
+        </div>
+      `).join("") : `<div class="coverage-row"><div><strong>Mailchimp sync unavailable</strong><div class="section-subtitle">The worker could not pull recent Mailchimp sends for coverage validation.</div></div></div>`;
+      return `
+        <div class="panel coverage-card">
+          <div class="eyebrow">Coverage check</div>
+          <h3>Mailchimp to KV sync visibility</h3>
+          <p class="section-subtitle">This panel compares recent Mailchimp sends with tracked campaign records so you can spot missing webhook captures immediately.</p>
+          ${gapCount ? `<div class="alert">Attention: ${gapCount} recent Mailchimp campaign${gapCount === 1 ? "" : "s"} ${gapCount === 1 ? "is" : "are"} not yet reflected in KV tracking.</div>` : ""}
+          <div class="coverage-list">${rows}</div>
+        </div>`;
+    }
+
+    function renderCampaignRows(campaigns) {
+      const filtered = campaigns.filter((campaign) => state.filter === "all" ? true : campaign.status === state.filter);
+      if (!filtered.length) {
+        return `<tr><td colspan="6"><div class="section-subtitle">No campaigns match the current filter.</div></td></tr>`;
+      }
+      return filtered.map((campaign) => `
+        <tr>
+          <td>
+            <div class="campaign-title">${campaign.title}</div>
+            <div class="section-subtitle">${campaign.subject_line || "No subject line"} · ${campaign.audience_name || "Audience not set"}</div>
+            <div class="campaign-meta section-subtitle">
+              <span>ID ${campaign.id}</span>
+              <span>${campaign.segment_name || "All contacts"}</span>
+            </div>
+          </td>
+          <td>${campaign.send_date || "—"}</td>
+          <td><span class="${pillClass(campaign.status)}">${campaign.status}</span></td>
+          <td>${formatPercent(campaign.metrics.open_rate)}</td>
+          <td>${formatPercent(campaign.metrics.click_rate)}</td>
+          <td>
+            <div class="campaign-actions">
+              <a class="action-link" href="/report/${campaign.id}" target="_blank" rel="noreferrer">Preview</a>
+              <button class="action-link" type="button" onclick="sendReportNow('${campaign.id}')">Send now</button>
+            </div>
+            <div class="section-subtitle" style="margin-top:8px;">
+              ${campaign.reported_at ? `Reported ${formatDate(campaign.reported_at)}` : "Awaiting scheduled send"}
+              ${campaign.last_error ? ` · Error: ${campaign.last_error}` : ""}
+            </div>
+          </td>
+        </tr>
+      `).join("");
+    }
+
+    function renderSteps(steps) {
+      return steps.map((step) => `
+        <div class="step">
+          <h4>${step.title}</h4>
+          <p>${step.body}</p>
+        </div>
+      `).join("");
+    }
+
+    function renderDashboard(data) {
+      const healthTone = data.health.cron_state === "healthy" ? "good" : "warn";
+      const latestReport = data.latest_report;
+      const latestWebhook = data.latest_webhook;
+      root.innerHTML = `
+        <div class="hero">
+          <div class="panel hero-main">
+            <div class="hero-copy">
+              <div class="eyebrow">Operational command center</div>
+              <h1>${data.service.name}</h1>
+              <p>${data.service.tagline} This interface is tuned for portfolio walkthroughs, client presentations, and day-to-day automation visibility.</p>
+              <div class="status-row">
+                <span class="badge ${healthTone}"><span class="dot"></span>Cron ${data.health.cron_state.replaceAll("_", " ")}</span>
+                <span class="badge good"><span class="dot"></span>Worker live</span>
+                <span class="badge ${data.health.coverage_gap_count ? "warn" : "good"}"><span class="dot"></span>${data.health.coverage_gap_count ? `${data.health.coverage_gap_count} sync gap` : "Webhook coverage aligned"}</span>
+                <span class="badge"><span class="dot"></span>${data.health.delivery_provider} delivery</span>
+              </div>
+            </div>
+          </div>
+          <div class="panel hero-aside">
+            <div class="signal-card">
+              <div class="micro">Last successful report</div>
+              <div class="signal-value">${latestReport ? latestReport.title : "None yet"}</div>
+              <p class="signal-meta">${latestReport ? `${formatDate(latestReport.reported_at)} via ${latestReport.reported_via || "automation"}` : "The worker has not delivered any reports yet."}</p>
+            </div>
+            <div class="signal-grid">
+              <div class="signal-card">
+                <div class="micro">Next scheduled cron</div>
+                <div class="signal-value" style="font-size:1.55rem">${formatDate(data.health.next_scheduled_at)}</div>
+                <p class="signal-meta">Runs daily at 09:00 UTC.</p>
+              </div>
+              <div class="signal-card">
+                <div class="micro">Webhook intake</div>
+                <div class="signal-value" style="font-size:1.4rem">${latestWebhook ? latestWebhook.title : "Quiet"}</div>
+                <p class="signal-meta">${latestWebhook ? `Captured ${formatDate(latestWebhook.webhook_received_at)}` : "No campaign events stored yet."}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="stats-grid">${renderOverviewCards(data.overview_cards)}</div>
+
+        <div class="layout">
+          <div class="stack">
+            ${sparklineSvg(data.runs)}
+
+            <div class="panel section">
+              <div class="section-head">
+                <div>
+                  <div class="eyebrow">Run history</div>
+                  <h3>What each automation cycle actually did</h3>
+                  <p class="section-subtitle">Every scheduled execution stores a run summary so you can see pending counts, processed campaigns, delivery success, and any failures.</p>
+                </div>
+              </div>
+              <div class="run-list">${renderRuns(data.runs)}</div>
+            </div>
+
+            <div class="panel section">
+              <div class="section-head">
+                <div>
+                  <div class="eyebrow">Campaign operations</div>
+                  <h3>Tracked campaign queue</h3>
+                  <p class="section-subtitle">Filter the tracked campaigns, preview any report, or trigger a manual send if you want to re-deliver a report on demand.</p>
+                </div>
+              </div>
+              <div class="campaign-filter" id="filterBar">
+                ${["all", "pending", "reported"].map((value) => `<button class="chip ${state.filter === value ? "active" : ""}" data-filter="${value}" type="button">${value}</button>`).join("")}
+              </div>
+              <div style="overflow:auto;">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Campaign</th>
+                      <th>Send date</th>
+                      <th>Status</th>
+                      <th>Open rate</th>
+                      <th>Click rate</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>${renderCampaignRows(data.campaigns)}</tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <div class="stack">
+            <div class="panel explainer-card">
+              <div class="eyebrow">System walkthrough</div>
+              <h3>How the automation works</h3>
+              <p class="section-subtitle">This gives clients a fast mental model for what the worker is doing behind the scenes and why the reporting window is intentionally delayed.</p>
+              <div class="step-list" style="margin-top:16px;">${renderSteps(data.explanations)}</div>
+            </div>
+
+            ${renderCoverage(data.tracking_coverage, data.health.coverage_gap_count)}
+          </div>
+        </div>
+
+        <div class="footer-note">Generated ${formatDate(data.generated_at)} · sender ${data.health.sender_identity}</div>
+      `;
+
+      root.querySelectorAll("[data-filter]").forEach((button) => {
+        button.addEventListener("click", () => {
+          state.filter = button.getAttribute("data-filter");
+          renderDashboard(state.data);
+        });
+      });
+    }
+
+    async function sendReportNow(campaignId) {
+      const confirmed = window.confirm(`Send the latest report for campaign ${campaignId} to the configured inbox?`);
+      if (!confirmed) return;
+      try {
+        const response = await fetch(`/report/${campaignId}?email=1`);
+        const payload = await response.json();
+        if (!response.ok || !payload.ok) {
+          throw new Error(payload.detail || payload.error || "Could not send report");
+        }
+        showToast(`Report sent: ${payload.subject}`);
+        await loadDashboard();
+      } catch (error) {
+        showToast(error.message || "Could not send report", "bad");
+      }
+    }
+    window.sendReportNow = sendReportNow;
+
+    async function loadDashboard() {
+      if (state.loading) return;
+      state.loading = true;
+      refreshButton.disabled = true;
+      try {
+        const response = await fetch("/api/dashboard", { cache: "no-store" });
+        const payload = await response.json();
+        if (!response.ok || !payload.ok) {
+          throw new Error(payload.detail || payload.error || "Dashboard load failed");
+        }
+        state.data = payload;
+        renderDashboard(payload);
+      } catch (error) {
+        root.innerHTML = `<div class="panel section"><div class="eyebrow">Dashboard error</div><h3>Could not load live automation data</h3><p style="margin-top:12px;">${String(error.message || error)}</p></div>`;
+      } finally {
+        state.loading = false;
+        refreshButton.disabled = false;
+      }
+    }
+
+    refreshButton.addEventListener("click", loadDashboard);
+    loadDashboard();
+    setInterval(loadDashboard, 60000);
+  </script>
+</body>
+</html>"""
+
+
 def render_report_html(bundle: dict[str, Any]) -> str:
     context = bundle["context"]
     metrics = bundle["metrics"]
@@ -1367,6 +2064,269 @@ async def store_campaign_record(env, key_name: str, record: dict[str, Any]):
     await env.CAMPAIGNS.put(key_name, json.dumps(record, separators=(",", ":")))
 
 
+async def load_all_run_records(env, limit: int | None = None) -> list[dict[str, Any]]:
+    records: list[dict[str, Any]] = []
+    cursor = None
+    while True:
+        options = {"prefix": "run:"}
+        if cursor:
+            options["cursor"] = cursor
+        page = await env.CAMPAIGNS.list(jsify(options))
+        page_data = to_python(page)
+        keys = page_data.get("keys") or []
+        for item in keys:
+            key_name = item.get("name")
+            if not key_name:
+                continue
+            raw = await env.CAMPAIGNS.get(key_name)
+            if not raw:
+                continue
+            try:
+                records.append(json.loads(raw))
+            except json.JSONDecodeError:
+                continue
+        cursor = page_data.get("cursor")
+        if not page_data.get("list_complete") and cursor:
+            continue
+        break
+    records.sort(key=lambda item: item.get("started_at") or "", reverse=True)
+    if limit is not None:
+        return records[:limit]
+    return records
+
+
+async def store_run_record(env, record: dict[str, Any]):
+    await env.CAMPAIGNS.put(run_kv_key(record["id"]), json.dumps(record, separators=(",", ":")))
+
+
+async def fetch_recent_sent_campaigns(env, count: int = RECENT_SENT_CAMPAIGN_LIMIT) -> list[dict[str, Any]]:
+    payload = await fetch_mailchimp_json(
+        env,
+        f"/campaigns?status=sent&sort_field=send_time&sort_dir=DESC&count={count}",
+    )
+    return payload.get("campaigns") or []
+
+
+async def build_dashboard_payload(env) -> dict[str, Any]:
+    now = utc_now()
+    campaigns = await load_all_campaign_records(env)
+    runs = await load_all_run_records(env, DASHBOARD_RUN_LIMIT)
+    campaigns.sort(
+        key=lambda item: (
+            item.get("send_time") or "",
+            item.get("reported_at") or "",
+            item.get("webhook_received_at") or "",
+        ),
+        reverse=True,
+    )
+
+    pending_campaigns = [item for item in campaigns if item.get("status") == "pending"]
+    reported_campaigns = [item for item in campaigns if item.get("status") == "reported"]
+    failed_campaigns = [
+        item for item in campaigns if item.get("status") != "reported" and item.get("last_error")
+    ]
+    two_days_ago = (now.date() - timedelta(days=2)).isoformat()
+    overdue_campaigns = [
+        item for item in pending_campaigns if (item.get("send_date") or "") <= two_days_ago
+    ]
+    latest_report = first_sorted_record(reported_campaigns, "reported_at")
+    latest_webhook = first_sorted_record(campaigns, "webhook_received_at")
+    latest_run = runs[0] if runs else None
+
+    recent_sent_campaigns: list[dict[str, Any]] = []
+    coverage_error = None
+    try:
+        recent_sent_campaigns = await fetch_recent_sent_campaigns(env)
+    except Exception as error:
+        coverage_error = str(error)
+
+    tracking_coverage = []
+    for campaign in recent_sent_campaigns:
+        tracked = record_by_id(campaigns, campaign["id"])
+        tracking_coverage.append(
+            {
+                "id": campaign["id"],
+                "title": nested_get(campaign, "settings", "title") or campaign["id"],
+                "subject_line": nested_get(campaign, "settings", "subject_line") or "",
+                "send_time": campaign.get("send_time"),
+                "tracked": bool(tracked),
+                "tracked_status": tracked.get("status") if tracked else "missing",
+                "reported_at": tracked.get("reported_at") if tracked else None,
+            }
+        )
+
+    pending_next_due = sorted(
+        (
+            {
+                "id": item["id"],
+                "title": item.get("title") or item["id"],
+                "due_at": due_date_for_send_date(item.get("send_date")),
+            }
+            for item in pending_campaigns
+            if due_date_for_send_date(item.get("send_date"))
+        ),
+        key=lambda item: item["due_at"],
+    )
+
+    health = {
+        "worker_live": True,
+        "cron_schedule": "0 9 * * *",
+        "cron_state": cron_state_for_run(latest_run, now),
+        "webhook_state": "configured"
+        if get_optional_env(env, "MAILCHIMP_WEBHOOK_SECRET")
+        else "open",
+        "delivery_provider": "Resend",
+        "sender_identity": get_optional_env(env, "RESEND_FROM_EMAIL") or "Not configured",
+        "latest_run_started_at": latest_run.get("started_at") if latest_run else None,
+        "latest_run_status": latest_run.get("status") if latest_run else "unknown",
+        "next_scheduled_at": next_daily_utc_occurrence(now, hour=9).isoformat(),
+        "coverage_gap_count": sum(1 for item in tracking_coverage if not item["tracked"]),
+    }
+
+    overview_cards = [
+        {
+            "label": "Worker health",
+            "value": "Live",
+            "meta": health["cron_state"].replace("_", " ").title(),
+            "tone": "good" if health["cron_state"] == "healthy" else "warn",
+        },
+        {
+            "label": "Pending campaigns",
+            "value": str(len(pending_campaigns)),
+            "meta": f"{len(overdue_campaigns)} due or overdue",
+            "tone": "warn" if overdue_campaigns else "neutral",
+        },
+        {
+            "label": "Reports delivered",
+            "value": str(len(reported_campaigns)),
+            "meta": latest_report.get("title") if latest_report else "No reports yet",
+            "tone": "good" if reported_campaigns else "neutral",
+        },
+        {
+            "label": "Run issues",
+            "value": str(len(failed_campaigns)),
+            "meta": coverage_error or "No active delivery errors",
+            "tone": "bad" if failed_campaigns or coverage_error else "good",
+        },
+    ]
+
+    return {
+        "ok": True,
+        "generated_at": now.replace(microsecond=0).isoformat(),
+        "service": {
+            "name": "Mailchimp Reports Worker",
+            "tagline": "Event-driven campaign intelligence for AI-powered reporting operations.",
+            "version": "dashboard-2026.03",
+        },
+        "health": health,
+        "overview_cards": overview_cards,
+        "latest_report": public_campaign_record(latest_report) if latest_report else None,
+        "latest_webhook": public_campaign_record(latest_webhook) if latest_webhook else None,
+        "next_due": pending_next_due[:3],
+        "runs": [public_run_record(item) for item in runs],
+        "campaigns": [public_campaign_record(item) for item in campaigns[:DASHBOARD_CAMPAIGN_LIMIT]],
+        "tracking_coverage": tracking_coverage,
+        "explanations": [
+            {
+                "title": "1. Capture the send",
+                "body": "Mailchimp posts a campaign event to the worker webhook the moment a campaign is sent. The worker fetches campaign metadata and stores it in KV as a pending report job.",
+            },
+            {
+                "title": "2. Hold for two days",
+                "body": "The automation waits exactly two days so opens, clicks, and delivery behavior can mature before a report is generated.",
+            },
+            {
+                "title": "3. Run the daily automation",
+                "body": "At 09:00 UTC each day, the cron checks KV for campaigns whose send date is exactly two days old, then generates one report per qualifying campaign.",
+            },
+            {
+                "title": "4. Deliver and archive",
+                "body": "Each report is emailed through Resend, the campaign record is marked reported, and the run history is persisted for auditability and client-facing visibility.",
+            },
+        ],
+    }
+
+
+def public_campaign_record(record: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not record:
+        return None
+    snapshot = record.get("metrics_snapshot") or {}
+    return {
+        "id": record.get("id"),
+        "title": record.get("title") or record.get("id"),
+        "subject_line": record.get("subject_line") or "",
+        "send_date": record.get("send_date"),
+        "send_time": record.get("send_time"),
+        "status": record.get("status") or "pending",
+        "reported_at": record.get("reported_at"),
+        "reported_via": record.get("reported_via"),
+        "webhook_received_at": record.get("webhook_received_at"),
+        "last_error": record.get("last_error"),
+        "last_attempted_at": record.get("last_attempted_at"),
+        "audience_name": record.get("audience_name") or "",
+        "segment_name": extract_segment_name(record.get("segment_text")),
+        "metrics": {
+            "delivery_rate": snapshot.get("delivery_rate"),
+            "open_rate": snapshot.get("unique_open_rate"),
+            "click_rate": snapshot.get("click_rate"),
+            "bounce_rate": snapshot.get("bounce_rate"),
+            "unsubscribe_rate": snapshot.get("unsubscribe_rate"),
+        },
+    }
+
+
+def public_run_record(record: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": record.get("id"),
+        "trigger": record.get("trigger") or "scheduled",
+        "status": record.get("status") or "unknown",
+        "started_at": record.get("started_at"),
+        "completed_at": record.get("completed_at"),
+        "target_date": record.get("target_date"),
+        "pending_campaigns": as_int(record.get("pending_campaigns")),
+        "processed_campaigns": as_int(record.get("processed_campaigns")),
+        "successful_campaigns": as_int(record.get("successful_campaigns")),
+        "failed_campaigns": as_int(record.get("failed_campaigns")),
+        "campaigns": record.get("campaigns") or [],
+    }
+
+
+def first_sorted_record(records: list[dict[str, Any]], key: str) -> dict[str, Any] | None:
+    if not records:
+        return None
+    ordered = sorted(records, key=lambda item: item.get(key) or "", reverse=True)
+    return ordered[0] if ordered else None
+
+
+def run_id_for_time(value: datetime) -> str:
+    return value.strftime("%Y%m%dT%H%M%SZ")
+
+
+def due_date_for_send_date(send_date: str | None) -> str | None:
+    parsed = parse_iso_datetime(send_date)
+    if not parsed:
+        return None
+    return (parsed.date() + timedelta(days=2)).isoformat()
+
+
+def cron_state_for_run(run: dict[str, Any] | None, now: datetime) -> str:
+    if not run:
+        return "awaiting_first_run"
+    started_at = parse_iso_datetime(run.get("started_at"))
+    if not started_at:
+        return "unknown"
+    if now - started_at <= timedelta(hours=30):
+        return "healthy"
+    return "stale"
+
+
+def next_daily_utc_occurrence(now: datetime, hour: int) -> datetime:
+    candidate = now.replace(hour=hour, minute=0, second=0, microsecond=0)
+    if candidate <= now:
+        candidate = candidate + timedelta(days=1)
+    return candidate
+
+
 def select_comparison_records(
     records: list[dict[str, Any]], current_campaign_id: str
 ) -> list[dict[str, Any]]:
@@ -1792,6 +2752,10 @@ def chunked(items: list[Any], size: int) -> list[list[Any]]:
 
 def campaign_kv_key(campaign_id: str) -> str:
     return f"campaign:{campaign_id}"
+
+
+def run_kv_key(run_id: str) -> str:
+    return f"run:{run_id}"
 
 
 def utc_now() -> datetime:
