@@ -68,6 +68,13 @@ class Default(WorkerEntrypoint):
                     }
                 )
 
+            if request.method in {"GET", "HEAD"} and is_webhook_path(
+                path, get_optional_env(self.env, "MAILCHIMP_WEBHOOK_SECRET")
+            ):
+                if request.method == "HEAD":
+                    return Response(status=200)
+                return json_response({"ok": True, "webhook": "ready"})
+
             if request.method == "POST" and is_webhook_path(
                 path, get_optional_env(self.env, "MAILCHIMP_WEBHOOK_SECRET")
             ):
