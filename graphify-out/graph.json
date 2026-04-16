@@ -8,8 +8,9 @@
       "file_type": "code",
       "source_file": "src/index.py",
       "source_location": "L1",
-      "id": "index",
-      "community": 0
+      "id": "src_index_py",
+      "community": 0,
+      "norm_label": "index.py"
     },
     {
       "label": "MailchimpApiError",
@@ -17,7 +18,8 @@
       "source_file": "src/index.py",
       "source_location": "L46",
       "id": "index_mailchimpapierror",
-      "community": 5
+      "community": 5,
+      "norm_label": "mailchimpapierror"
     },
     {
       "label": "Exception",
@@ -25,7 +27,8 @@
       "source_file": "",
       "source_location": "",
       "id": "exception",
-      "community": 5
+      "community": 5,
+      "norm_label": "exception"
     },
     {
       "label": ".__init__()",
@@ -33,7 +36,8 @@
       "source_file": "src/index.py",
       "source_location": "L47",
       "id": "index_mailchimpapierror_init",
-      "community": 5
+      "community": 5,
+      "norm_label": ".__init__()"
     },
     {
       "label": "Default",
@@ -41,7 +45,8 @@
       "source_file": "src/index.py",
       "source_location": "L55",
       "id": "index_default",
-      "community": 3
+      "community": 3,
+      "norm_label": "default"
     },
     {
       "label": "WorkerEntrypoint",
@@ -49,7 +54,8 @@
       "source_file": "",
       "source_location": "",
       "id": "workerentrypoint",
-      "community": 3
+      "community": 3,
+      "norm_label": "workerentrypoint"
     },
     {
       "label": ".fetch()",
@@ -57,7 +63,8 @@
       "source_file": "src/index.py",
       "source_location": "L56",
       "id": "index_default_fetch",
-      "community": 4
+      "community": 4,
+      "norm_label": ".fetch()"
     },
     {
       "label": ".scheduled()",
@@ -65,7 +72,8 @@
       "source_file": "src/index.py",
       "source_location": "L145",
       "id": "index_default_scheduled",
-      "community": 3
+      "community": 3,
+      "norm_label": ".scheduled()"
     },
     {
       "label": ".handle_webhook()",
@@ -73,7 +81,8 @@
       "source_file": "src/index.py",
       "source_location": "L149",
       "id": "index_default_handle_webhook",
-      "community": 3
+      "community": 3,
+      "norm_label": ".handle_webhook()"
     },
     {
       "label": ".handle_manual_report()",
@@ -81,7 +90,8 @@
       "source_file": "src/index.py",
       "source_location": "L228",
       "id": "index_default_handle_manual_report",
-      "community": 4
+      "community": 4,
+      "norm_label": ".handle_manual_report()"
     },
     {
       "label": ".handle_test_email()",
@@ -89,7 +99,8 @@
       "source_file": "src/index.py",
       "source_location": "L258",
       "id": "index_default_handle_test_email",
-      "community": 4
+      "community": 4,
+      "norm_label": ".handle_test_email()"
     },
     {
       "label": ".handle_dashboard_api()",
@@ -97,7 +108,8 @@
       "source_file": "src/index.py",
       "source_location": "L282",
       "id": "index_default_handle_dashboard_api",
-      "community": 4
+      "community": 4,
+      "norm_label": ".handle_dashboard_api()"
     },
     {
       "label": ".process_due_campaigns()",
@@ -105,7 +117,8 @@
       "source_file": "src/index.py",
       "source_location": "L286",
       "id": "index_default_process_due_campaigns",
-      "community": 3
+      "community": 3,
+      "norm_label": ".process_due_campaigns()"
     },
     {
       "label": ".process_one_due_campaign()",
@@ -113,7 +126,8 @@
       "source_file": "src/index.py",
       "source_location": "L355",
       "id": "index_default_process_one_due_campaign",
-      "community": 3
+      "community": 3,
+      "norm_label": ".process_one_due_campaign()"
     },
     {
       "label": "build_campaign_record()",
@@ -121,7 +135,8 @@
       "source_file": "src/index.py",
       "source_location": "L406",
       "id": "index_build_campaign_record",
-      "community": 3
+      "community": 3,
+      "norm_label": "build_campaign_record()"
     },
     {
       "label": "build_report_bundle()",
@@ -129,7 +144,8 @@
       "source_file": "src/index.py",
       "source_location": "L442",
       "id": "index_build_report_bundle",
-      "community": 2
+      "community": 2,
+      "norm_label": "build_report_bundle()"
     },
     {
       "label": "compute_metrics()",
@@ -137,7 +153,8 @@
       "source_file": "src/index.py",
       "source_location": "L515",
       "id": "index_compute_metrics",
-      "community": 0
+      "community": 0,
+      "norm_label": "compute_metrics()"
     },
     {
       "label": "persist_report_result()",
@@ -145,7 +162,8 @@
       "source_file": "src/index.py",
       "source_location": "L660",
       "id": "index_persist_report_result",
-      "community": 3
+      "community": 3,
+      "norm_label": "persist_report_result()"
     },
     {
       "label": "build_executive_summary()",
@@ -153,7 +171,8 @@
       "source_file": "src/index.py",
       "source_location": "L687",
       "id": "index_build_executive_summary",
-      "community": 1
+      "community": 1,
+      "norm_label": "build_executive_summary()"
     },
     {
       "label": "build_delivery_narrative()",
@@ -161,7 +180,8 @@
       "source_file": "src/index.py",
       "source_location": "L714",
       "id": "index_build_delivery_narrative",
-      "community": 1
+      "community": 1,
+      "norm_label": "build_delivery_narrative()"
     },
     {
       "label": "build_open_narrative()",
@@ -169,7 +189,8 @@
       "source_file": "src/index.py",
       "source_location": "L725",
       "id": "index_build_open_narrative",
-      "community": 1
+      "community": 1,
+      "norm_label": "build_open_narrative()"
     },
     {
       "label": "build_click_narrative()",
@@ -177,7 +198,8 @@
       "source_file": "src/index.py",
       "source_location": "L740",
       "id": "index_build_click_narrative",
-      "community": 1
+      "community": 1,
+      "norm_label": "build_click_narrative()"
     },
     {
       "label": "build_trust_narrative()",
@@ -185,7 +207,8 @@
       "source_file": "src/index.py",
       "source_location": "L755",
       "id": "index_build_trust_narrative",
-      "community": 1
+      "community": 1,
+      "norm_label": "build_trust_narrative()"
     },
     {
       "label": "build_closing_summary()",
@@ -193,7 +216,8 @@
       "source_file": "src/index.py",
       "source_location": "L763",
       "id": "index_build_closing_summary",
-      "community": 2
+      "community": 2,
+      "norm_label": "build_closing_summary()"
     },
     {
       "label": "build_recommendations()",
@@ -201,7 +225,8 @@
       "source_file": "src/index.py",
       "source_location": "L782",
       "id": "index_build_recommendations",
-      "community": 2
+      "community": 2,
+      "norm_label": "build_recommendations()"
     },
     {
       "label": "build_comparison_bundle()",
@@ -209,7 +234,8 @@
       "source_file": "src/index.py",
       "source_location": "L840",
       "id": "index_build_comparison_bundle",
-      "community": 1
+      "community": 1,
+      "norm_label": "build_comparison_bundle()"
     },
     {
       "label": "render_dashboard_shell()",
@@ -217,7 +243,8 @@
       "source_file": "src/index.py",
       "source_location": "L929",
       "id": "index_render_dashboard_shell",
-      "community": 4
+      "community": 4,
+      "norm_label": "render_dashboard_shell()"
     },
     {
       "label": "render_report_html()",
@@ -225,7 +252,8 @@
       "source_file": "src/index.py",
       "source_location": "L1616",
       "id": "index_render_report_html",
-      "community": 1
+      "community": 1,
+      "norm_label": "render_report_html()"
     },
     {
       "label": "render_report_plain_text()",
@@ -233,7 +261,8 @@
       "source_file": "src/index.py",
       "source_location": "L1903",
       "id": "index_render_report_plain_text",
-      "community": 3
+      "community": 3,
+      "norm_label": "render_report_plain_text()"
     },
     {
       "label": "render_table()",
@@ -241,7 +270,8 @@
       "source_file": "src/index.py",
       "source_location": "L1945",
       "id": "index_render_table",
-      "community": 1
+      "community": 1,
+      "norm_label": "render_table()"
     },
     {
       "label": "scorecard_row()",
@@ -249,7 +279,8 @@
       "source_file": "src/index.py",
       "source_location": "L1966",
       "id": "index_scorecard_row",
-      "community": 0
+      "community": 0,
+      "norm_label": "scorecard_row()"
     },
     {
       "label": "status_badge()",
@@ -257,7 +288,8 @@
       "source_file": "src/index.py",
       "source_location": "L1970",
       "id": "index_status_badge",
-      "community": 1
+      "community": 1,
+      "norm_label": "status_badge()"
     },
     {
       "label": "send_report_email()",
@@ -265,7 +297,8 @@
       "source_file": "src/index.py",
       "source_location": "L1981",
       "id": "index_send_report_email",
-      "community": 4
+      "community": 4,
+      "norm_label": "send_report_email()"
     },
     {
       "label": "fetch_mailchimp_json()",
@@ -273,7 +306,8 @@
       "source_file": "src/index.py",
       "source_location": "L2026",
       "id": "index_fetch_mailchimp_json",
-      "community": 5
+      "community": 5,
+      "norm_label": "fetch_mailchimp_json()"
     },
     {
       "label": "safe_error_body()",
@@ -281,7 +315,8 @@
       "source_file": "src/index.py",
       "source_location": "L2064",
       "id": "index_safe_error_body",
-      "community": 5
+      "community": 5,
+      "norm_label": "safe_error_body()"
     },
     {
       "label": "retry_delay_seconds()",
@@ -289,7 +324,8 @@
       "source_file": "src/index.py",
       "source_location": "L2075",
       "id": "index_retry_delay_seconds",
-      "community": 5
+      "community": 5,
+      "norm_label": "retry_delay_seconds()"
     },
     {
       "label": "load_all_campaign_records()",
@@ -297,7 +333,8 @@
       "source_file": "src/index.py",
       "source_location": "L2085",
       "id": "index_load_all_campaign_records",
-      "community": 2
+      "community": 2,
+      "norm_label": "load_all_campaign_records()"
     },
     {
       "label": "load_campaign_record()",
@@ -305,7 +342,8 @@
       "source_file": "src/index.py",
       "source_location": "L2110",
       "id": "index_load_campaign_record",
-      "community": 2
+      "community": 2,
+      "norm_label": "load_campaign_record()"
     },
     {
       "label": "store_campaign_record()",
@@ -313,7 +351,8 @@
       "source_file": "src/index.py",
       "source_location": "L2120",
       "id": "index_store_campaign_record",
-      "community": 3
+      "community": 3,
+      "norm_label": "store_campaign_record()"
     },
     {
       "label": "load_all_run_records()",
@@ -321,7 +360,8 @@
       "source_file": "src/index.py",
       "source_location": "L2124",
       "id": "index_load_all_run_records",
-      "community": 2
+      "community": 2,
+      "norm_label": "load_all_run_records()"
     },
     {
       "label": "store_run_record()",
@@ -329,7 +369,8 @@
       "source_file": "src/index.py",
       "source_location": "L2155",
       "id": "index_store_run_record",
-      "community": 0
+      "community": 0,
+      "norm_label": "store_run_record()"
     },
     {
       "label": "fetch_recent_sent_campaigns()",
@@ -337,7 +378,8 @@
       "source_file": "src/index.py",
       "source_location": "L2159",
       "id": "index_fetch_recent_sent_campaigns",
-      "community": 5
+      "community": 5,
+      "norm_label": "fetch_recent_sent_campaigns()"
     },
     {
       "label": "build_dashboard_payload()",
@@ -345,7 +387,8 @@
       "source_file": "src/index.py",
       "source_location": "L2167",
       "id": "index_build_dashboard_payload",
-      "community": 2
+      "community": 2,
+      "norm_label": "build_dashboard_payload()"
     },
     {
       "label": "public_campaign_record()",
@@ -353,7 +396,8 @@
       "source_file": "src/index.py",
       "source_location": "L2307",
       "id": "index_public_campaign_record",
-      "community": 2
+      "community": 2,
+      "norm_label": "public_campaign_record()"
     },
     {
       "label": "public_run_record()",
@@ -361,7 +405,8 @@
       "source_file": "src/index.py",
       "source_location": "L2335",
       "id": "index_public_run_record",
-      "community": 0
+      "community": 0,
+      "norm_label": "public_run_record()"
     },
     {
       "label": "first_sorted_record()",
@@ -369,7 +414,8 @@
       "source_file": "src/index.py",
       "source_location": "L2351",
       "id": "index_first_sorted_record",
-      "community": 2
+      "community": 2,
+      "norm_label": "first_sorted_record()"
     },
     {
       "label": "run_id_for_time()",
@@ -377,7 +423,8 @@
       "source_file": "src/index.py",
       "source_location": "L2358",
       "id": "index_run_id_for_time",
-      "community": 3
+      "community": 3,
+      "norm_label": "run_id_for_time()"
     },
     {
       "label": "due_date_for_send_date()",
@@ -385,7 +432,8 @@
       "source_file": "src/index.py",
       "source_location": "L2362",
       "id": "index_due_date_for_send_date",
-      "community": 2
+      "community": 2,
+      "norm_label": "due_date_for_send_date()"
     },
     {
       "label": "cron_state_for_run()",
@@ -393,7 +441,8 @@
       "source_file": "src/index.py",
       "source_location": "L2369",
       "id": "index_cron_state_for_run",
-      "community": 2
+      "community": 2,
+      "norm_label": "cron_state_for_run()"
     },
     {
       "label": "next_daily_utc_occurrence()",
@@ -401,7 +450,8 @@
       "source_file": "src/index.py",
       "source_location": "L2380",
       "id": "index_next_daily_utc_occurrence",
-      "community": 2
+      "community": 2,
+      "norm_label": "next_daily_utc_occurrence()"
     },
     {
       "label": "select_comparison_records()",
@@ -409,7 +459,8 @@
       "source_file": "src/index.py",
       "source_location": "L2387",
       "id": "index_select_comparison_records",
-      "community": 2
+      "community": 2,
+      "norm_label": "select_comparison_records()"
     },
     {
       "label": "record_by_id()",
@@ -417,7 +468,8 @@
       "source_file": "src/index.py",
       "source_location": "L2401",
       "id": "index_record_by_id",
-      "community": 4
+      "community": 4,
+      "norm_label": "record_by_id()"
     },
     {
       "label": "recommendation_heading()",
@@ -425,7 +477,8 @@
       "source_file": "src/index.py",
       "source_location": "L2408",
       "id": "index_recommendation_heading",
-      "community": 0
+      "community": 0,
+      "norm_label": "recommendation_heading()"
     },
     {
       "label": "report_subject()",
@@ -433,7 +486,8 @@
       "source_file": "src/index.py",
       "source_location": "L2415",
       "id": "index_report_subject",
-      "community": 4
+      "community": 4,
+      "norm_label": "report_subject()"
     },
     {
       "label": "is_webhook_path()",
@@ -441,7 +495,8 @@
       "source_file": "src/index.py",
       "source_location": "L2419",
       "id": "index_is_webhook_path",
-      "community": 4
+      "community": 4,
+      "norm_label": "is_webhook_path()"
     },
     {
       "label": "is_test_email_path()",
@@ -449,7 +504,8 @@
       "source_file": "src/index.py",
       "source_location": "L2425",
       "id": "index_is_test_email_path",
-      "community": 4
+      "community": 4,
+      "norm_label": "is_test_email_path()"
     },
     {
       "label": "parse_webhook_payload()",
@@ -457,7 +513,8 @@
       "source_file": "src/index.py",
       "source_location": "L2429",
       "id": "index_parse_webhook_payload",
-      "community": 0
+      "community": 0,
+      "norm_label": "parse_webhook_payload()"
     },
     {
       "label": "flatten_payload()",
@@ -465,7 +522,8 @@
       "source_file": "src/index.py",
       "source_location": "L2442",
       "id": "index_flatten_payload",
-      "community": 0
+      "community": 0,
+      "norm_label": "flatten_payload()"
     },
     {
       "label": "normalize_form_key()",
@@ -473,7 +531,8 @@
       "source_file": "src/index.py",
       "source_location": "L2458",
       "id": "index_normalize_form_key",
-      "community": 0
+      "community": 0,
+      "norm_label": "normalize_form_key()"
     },
     {
       "label": "first_value()",
@@ -481,7 +540,8 @@
       "source_file": "src/index.py",
       "source_location": "L2462",
       "id": "index_first_value",
-      "community": 3
+      "community": 3,
+      "norm_label": "first_value()"
     },
     {
       "label": "nested_get()",
@@ -489,7 +549,8 @@
       "source_file": "src/index.py",
       "source_location": "L2470",
       "id": "index_nested_get",
-      "community": 0
+      "community": 0,
+      "norm_label": "nested_get()"
     },
     {
       "label": "infer_clicks_not_applicable()",
@@ -497,7 +558,8 @@
       "source_file": "src/index.py",
       "source_location": "L2479",
       "id": "index_infer_clicks_not_applicable",
-      "community": 0
+      "community": 0,
+      "norm_label": "infer_clicks_not_applicable()"
     },
     {
       "label": "comparison_label()",
@@ -505,7 +567,8 @@
       "source_file": "src/index.py",
       "source_location": "L2499",
       "id": "index_comparison_label",
-      "community": 0
+      "community": 0,
+      "norm_label": "comparison_label()"
     },
     {
       "label": "extract_campaign_number()",
@@ -513,7 +576,8 @@
       "source_file": "src/index.py",
       "source_location": "L2514",
       "id": "index_extract_campaign_number",
-      "community": 0
+      "community": 0,
+      "norm_label": "extract_campaign_number()"
     },
     {
       "label": "extract_segment_name()",
@@ -521,7 +585,8 @@
       "source_file": "src/index.py",
       "source_location": "L2526",
       "id": "index_extract_segment_name",
-      "community": 2
+      "community": 2,
+      "norm_label": "extract_segment_name()"
     },
     {
       "label": "delivery_assessment()",
@@ -529,7 +594,8 @@
       "source_file": "src/index.py",
       "source_location": "L2540",
       "id": "index_delivery_assessment",
-      "community": 1
+      "community": 1,
+      "norm_label": "delivery_assessment()"
     },
     {
       "label": "open_assessment()",
@@ -537,7 +603,8 @@
       "source_file": "src/index.py",
       "source_location": "L2556",
       "id": "index_open_assessment",
-      "community": 1
+      "community": 1,
+      "norm_label": "open_assessment()"
     },
     {
       "label": "click_assessment()",
@@ -545,7 +612,8 @@
       "source_file": "src/index.py",
       "source_location": "L2570",
       "id": "index_click_assessment",
-      "community": 1
+      "community": 1,
+      "norm_label": "click_assessment()"
     },
     {
       "label": "trust_assessment()",
@@ -553,7 +621,8 @@
       "source_file": "src/index.py",
       "source_location": "L2588",
       "id": "index_trust_assessment",
-      "community": 1
+      "community": 1,
+      "norm_label": "trust_assessment()"
     },
     {
       "label": "delivery_status()",
@@ -561,7 +630,8 @@
       "source_file": "src/index.py",
       "source_location": "L2602",
       "id": "index_delivery_status",
-      "community": 0
+      "community": 0,
+      "norm_label": "delivery_status()"
     },
     {
       "label": "bounce_status()",
@@ -569,7 +639,8 @@
       "source_file": "src/index.py",
       "source_location": "L2610",
       "id": "index_bounce_status",
-      "community": 0
+      "community": 0,
+      "norm_label": "bounce_status()"
     },
     {
       "label": "open_status()",
@@ -577,7 +648,8 @@
       "source_file": "src/index.py",
       "source_location": "L2618",
       "id": "index_open_status",
-      "community": 0
+      "community": 0,
+      "norm_label": "open_status()"
     },
     {
       "label": "click_status()",
@@ -585,7 +657,8 @@
       "source_file": "src/index.py",
       "source_location": "L2626",
       "id": "index_click_status",
-      "community": 0
+      "community": 0,
+      "norm_label": "click_status()"
     },
     {
       "label": "ctor_status()",
@@ -593,7 +666,8 @@
       "source_file": "src/index.py",
       "source_location": "L2634",
       "id": "index_ctor_status",
-      "community": 0
+      "community": 0,
+      "norm_label": "ctor_status()"
     },
     {
       "label": "unsubscribe_status()",
@@ -601,7 +675,8 @@
       "source_file": "src/index.py",
       "source_location": "L2642",
       "id": "index_unsubscribe_status",
-      "community": 0
+      "community": 0,
+      "norm_label": "unsubscribe_status()"
     },
     {
       "label": "abuse_status()",
@@ -609,7 +684,8 @@
       "source_file": "src/index.py",
       "source_location": "L2650",
       "id": "index_abuse_status",
-      "community": 0
+      "community": 0,
+      "norm_label": "abuse_status()"
     },
     {
       "label": "trend_symbol()",
@@ -617,7 +693,8 @@
       "source_file": "src/index.py",
       "source_location": "L2654",
       "id": "index_trend_symbol",
-      "community": 1
+      "community": 1,
+      "norm_label": "trend_symbol()"
     },
     {
       "label": "format_comparison_value()",
@@ -625,7 +702,8 @@
       "source_file": "src/index.py",
       "source_location": "L2673",
       "id": "index_format_comparison_value",
-      "community": 1
+      "community": 1,
+      "norm_label": "format_comparison_value()"
     },
     {
       "label": "best_metric_from_snapshot()",
@@ -633,7 +711,8 @@
       "source_file": "src/index.py",
       "source_location": "L2680",
       "id": "index_best_metric_from_snapshot",
-      "community": 1
+      "community": 1,
+      "norm_label": "best_metric_from_snapshot()"
     },
     {
       "label": "parse_iso_datetime()",
@@ -641,7 +720,8 @@
       "source_file": "src/index.py",
       "source_location": "L2691",
       "id": "index_parse_iso_datetime",
-      "community": 2
+      "community": 2,
+      "norm_label": "parse_iso_datetime()"
     },
     {
       "label": "normalize_send_date()",
@@ -649,7 +729,8 @@
       "source_file": "src/index.py",
       "source_location": "L2712",
       "id": "index_normalize_send_date",
-      "community": 2
+      "community": 2,
+      "norm_label": "normalize_send_date()"
     },
     {
       "label": "format_datetime_label()",
@@ -657,7 +738,8 @@
       "source_file": "src/index.py",
       "source_location": "L2721",
       "id": "index_format_datetime_label",
-      "community": 0
+      "community": 0,
+      "norm_label": "format_datetime_label()"
     },
     {
       "label": "json_response()",
@@ -665,7 +747,8 @@
       "source_file": "src/index.py",
       "source_location": "L2731",
       "id": "index_json_response",
-      "community": 4
+      "community": 4,
+      "norm_label": "json_response()"
     },
     {
       "label": "html_response()",
@@ -673,7 +756,8 @@
       "source_file": "src/index.py",
       "source_location": "L2739",
       "id": "index_html_response",
-      "community": 4
+      "community": 4,
+      "norm_label": "html_response()"
     },
     {
       "label": "require_env()",
@@ -681,7 +765,8 @@
       "source_file": "src/index.py",
       "source_location": "L2747",
       "id": "index_require_env",
-      "community": 4
+      "community": 4,
+      "norm_label": "require_env()"
     },
     {
       "label": "get_optional_env()",
@@ -689,7 +774,8 @@
       "source_file": "src/index.py",
       "source_location": "L2754",
       "id": "index_get_optional_env",
-      "community": 4
+      "community": 4,
+      "norm_label": "get_optional_env()"
     },
     {
       "label": "percent()",
@@ -697,7 +783,8 @@
       "source_file": "src/index.py",
       "source_location": "L2761",
       "id": "index_percent",
-      "community": 0
+      "community": 0,
+      "norm_label": "percent()"
     },
     {
       "label": "as_int()",
@@ -705,7 +792,8 @@
       "source_file": "src/index.py",
       "source_location": "L2772",
       "id": "index_as_int",
-      "community": 0
+      "community": 0,
+      "norm_label": "as_int()"
     },
     {
       "label": "as_float()",
@@ -713,7 +801,8 @@
       "source_file": "src/index.py",
       "source_location": "L2781",
       "id": "index_as_float",
-      "community": 0
+      "community": 0,
+      "norm_label": "as_float()"
     },
     {
       "label": "format_percent()",
@@ -721,7 +810,8 @@
       "source_file": "src/index.py",
       "source_location": "L2790",
       "id": "index_format_percent",
-      "community": 1
+      "community": 1,
+      "norm_label": "format_percent()"
     },
     {
       "label": "format_signed_percent()",
@@ -729,7 +819,8 @@
       "source_file": "src/index.py",
       "source_location": "L2797",
       "id": "index_format_signed_percent",
-      "community": 1
+      "community": 1,
+      "norm_label": "format_signed_percent()"
     },
     {
       "label": "format_integer()",
@@ -737,7 +828,8 @@
       "source_file": "src/index.py",
       "source_location": "L2802",
       "id": "index_format_integer",
-      "community": 1
+      "community": 1,
+      "norm_label": "format_integer()"
     },
     {
       "label": "chunked()",
@@ -745,7 +837,8 @@
       "source_file": "src/index.py",
       "source_location": "L2806",
       "id": "index_chunked",
-      "community": 3
+      "community": 3,
+      "norm_label": "chunked()"
     },
     {
       "label": "campaign_kv_key()",
@@ -753,7 +846,8 @@
       "source_file": "src/index.py",
       "source_location": "L2810",
       "id": "index_campaign_kv_key",
-      "community": 3
+      "community": 3,
+      "norm_label": "campaign_kv_key()"
     },
     {
       "label": "run_kv_key()",
@@ -761,7 +855,8 @@
       "source_file": "src/index.py",
       "source_location": "L2814",
       "id": "index_run_kv_key",
-      "community": 0
+      "community": 0,
+      "norm_label": "run_kv_key()"
     },
     {
       "label": "utc_now()",
@@ -769,7 +864,8 @@
       "source_file": "src/index.py",
       "source_location": "L2818",
       "id": "index_utc_now",
-      "community": 2
+      "community": 2,
+      "norm_label": "utc_now()"
     },
     {
       "label": "iso_now()",
@@ -777,7 +873,8 @@
       "source_file": "src/index.py",
       "source_location": "L2822",
       "id": "index_iso_now",
-      "community": 3
+      "community": 3,
+      "norm_label": "iso_now()"
     },
     {
       "label": "normalize_token()",
@@ -785,7 +882,8 @@
       "source_file": "src/index.py",
       "source_location": "L2826",
       "id": "index_normalize_token",
-      "community": 3
+      "community": 3,
+      "norm_label": "normalize_token()"
     },
     {
       "label": "query_truthy()",
@@ -793,7 +891,8 @@
       "source_file": "src/index.py",
       "source_location": "L2832",
       "id": "index_query_truthy",
-      "community": 4
+      "community": 4,
+      "norm_label": "query_truthy()"
     },
     {
       "label": "to_python()",
@@ -801,7 +900,8 @@
       "source_file": "src/index.py",
       "source_location": "L2836",
       "id": "index_to_python",
-      "community": 2
+      "community": 2,
+      "norm_label": "to_python()"
     },
     {
       "label": "jsify()",
@@ -809,7 +909,8 @@
       "source_file": "src/index.py",
       "source_location": "L2842",
       "id": "index_jsify",
-      "community": 2
+      "community": 2,
+      "norm_label": "jsify()"
     },
     {
       "label": "log_event()",
@@ -817,7 +918,8 @@
       "source_file": "src/index.py",
       "source_location": "L2846",
       "id": "index_log_event",
-      "community": 3
+      "community": 3,
+      "norm_label": "log_event()"
     }
   ],
   "links": [
@@ -827,9 +929,9 @@
       "source_file": "src/index.py",
       "source_location": "L46",
       "weight": 1.0,
-      "_src": "index",
+      "_src": "src_index_py",
       "_tgt": "index_mailchimpapierror",
-      "source": "index",
+      "source": "src_index_py",
       "target": "index_mailchimpapierror",
       "confidence_score": 1.0
     },
@@ -839,9 +941,9 @@
       "source_file": "src/index.py",
       "source_location": "L55",
       "weight": 1.0,
-      "_src": "index",
+      "_src": "src_index_py",
       "_tgt": "index_default",
-      "source": "index",
+      "source": "src_index_py",
       "target": "index_default",
       "confidence_score": 1.0
     },
@@ -851,9 +953,9 @@
       "source_file": "src/index.py",
       "source_location": "L406",
       "weight": 1.0,
-      "_src": "index",
+      "_src": "src_index_py",
       "_tgt": "index_build_campaign_record",
-      "source": "index",
+      "source": "src_index_py",
       "target": "index_build_campaign_record",
       "confidence_score": 1.0
     },
@@ -863,9 +965,9 @@
       "source_file": "src/index.py",
       "source_location": "L442",
       "weight": 1.0,
-      "_src": "index",
+      "_src": "src_index_py",
       "_tgt": "index_build_report_bundle",
-      "source": "index",
+      "source": "src_index_py",
       "target": "index_build_report_bundle",
       "confidence_score": 1.0
     },
@@ -875,9 +977,9 @@
       "source_file": "src/index.py",
       "source_location": "L515",
       "weight": 1.0,
-      "_src": "index",
+      "_src": "src_index_py",
       "_tgt": "index_compute_metrics",
-      "source": "index",
+      "source": "src_index_py",
       "target": "index_compute_metrics",
       "confidence_score": 1.0
     },
@@ -887,9 +989,9 @@
       "source_file": "src/index.py",
       "source_location": "L660",
       "weight": 1.0,
-      "_src": "index",
+      "_src": "src_index_py",
       "_tgt": "index_persist_report_result",
-      "source": "index",
+      "source": "src_index_py",
       "target": "index_persist_report_result",
       "confidence_score": 1.0
     },
@@ -899,9 +1001,9 @@
       "source_file": "src/index.py",
       "source_location": "L687",
       "weight": 1.0,
-      "_src": "index",
+      "_src": "src_index_py",
       "_tgt": "index_build_executive_summary",
-      "source": "index",
+      "source": "src_index_py",
       "target": "index_build_executive_summary",
       "confidence_score": 1.0
     },
@@ -911,9 +1013,9 @@
       "source_file": "src/index.py",
       "source_location": "L714",
       "weight": 1.0,
-      "_src": "index",
+      "_src": "src_index_py",
       "_tgt": "index_build_delivery_narrative",
-      "source": "index",
+      "source": "src_index_py",
       "target": "index_build_delivery_narrative",
       "confidence_score": 1.0
     },
@@ -923,9 +1025,9 @@
       "source_file": "src/index.py",
       "source_location": "L725",
       "weight": 1.0,
-      "_src": "index",
+      "_src": "src_index_py",
       "_tgt": "index_build_open_narrative",
-      "source": "index",
+      "source": "src_index_py",
       "target": "index_build_open_narrative",
       "confidence_score": 1.0
     },
@@ -935,9 +1037,9 @@
       "source_file": "src/index.py",
       "source_location": "L740",
       "weight": 1.0,
-      "_src": "index",
+      "_src": "src_index_py",
       "_tgt": "index_build_click_narrative",
-      "source": "index",
+      "source": "src_index_py",
       "target": "index_build_click_narrative",
       "confidence_score": 1.0
     },
@@ -947,9 +1049,9 @@
       "source_file": "src/index.py",
       "source_location": "L755",
       "weight": 1.0,
-      "_src": "index",
+      "_src": "src_index_py",
       "_tgt": "index_build_trust_narrative",
-      "source": "index",
+      "source": "src_index_py",
       "target": "index_build_trust_narrative",
       "confidence_score": 1.0
     },
@@ -959,9 +1061,9 @@
       "source_file": "src/index.py",
       "source_location": "L763",
       "weight": 1.0,
-      "_src": "index",
+      "_src": "src_index_py",
       "_tgt": "index_build_closing_summary",
-      "source": "index",
+      "source": "src_index_py",
       "target": "index_build_closing_summary",
       "confidence_score": 1.0
     },
@@ -971,9 +1073,9 @@
       "source_file": "src/index.py",
       "source_location": "L782",
       "weight": 1.0,
-      "_src": "index",
+      "_src": "src_index_py",
       "_tgt": "index_build_recommendations",
-      "source": "index",
+      "source": "src_index_py",
       "target": "index_build_recommendations",
       "confidence_score": 1.0
     },
@@ -983,9 +1085,9 @@
       "source_file": "src/index.py",
       "source_location": "L840",
       "weight": 1.0,
-      "_src": "index",
+      "_src": "src_index_py",
       "_tgt": "index_build_comparison_bundle",
-      "source": "index",
+      "source": "src_index_py",
       "target": "index_build_comparison_bundle",
       "confidence_score": 1.0
     },
@@ -995,9 +1097,9 @@
       "source_file": "src/index.py",
       "source_location": "L929",
       "weight": 1.0,
-      "_src": "index",
+      "_src": "src_index_py",
       "_tgt": "index_render_dashboard_shell",
-      "source": "index",
+      "source": "src_index_py",
       "target": "index_render_dashboard_shell",
       "confidence_score": 1.0
     },
@@ -1007,9 +1109,9 @@
       "source_file": "src/index.py",
       "source_location": "L1616",
       "weight": 1.0,
-      "_src": "index",
+      "_src": "src_index_py",
       "_tgt": "index_render_report_html",
-      "source": "index",
+      "source": "src_index_py",
       "target": "index_render_report_html",
       "confidence_score": 1.0
     },
@@ -1019,9 +1121,9 @@
       "source_file": "src/index.py",
       "source_location": "L1903",
       "weight": 1.0,
-      "_src": "index",
+      "_src": "src_index_py",
       "_tgt": "index_render_report_plain_text",
-      "source": "index",
+      "source": "src_index_py",
       "target": "index_render_report_plain_text",
       "confidence_score": 1.0
     },
@@ -1031,9 +1133,9 @@
       "source_file": "src/index.py",
       "source_location": "L1945",
       "weight": 1.0,
-      "_src": "index",
+      "_src": "src_index_py",
       "_tgt": "index_render_table",
-      "source": "index",
+      "source": "src_index_py",
       "target": "index_render_table",
       "confidence_score": 1.0
     },
@@ -1043,9 +1145,9 @@
       "source_file": "src/index.py",
       "source_location": "L1966",
       "weight": 1.0,
-      "_src": "index",
+      "_src": "src_index_py",
       "_tgt": "index_scorecard_row",
-      "source": "index",
+      "source": "src_index_py",
       "target": "index_scorecard_row",
       "confidence_score": 1.0
     },
@@ -1055,9 +1157,9 @@
       "source_file": "src/index.py",
       "source_location": "L1970",
       "weight": 1.0,
-      "_src": "index",
+      "_src": "src_index_py",
       "_tgt": "index_status_badge",
-      "source": "index",
+      "source": "src_index_py",
       "target": "index_status_badge",
       "confidence_score": 1.0
     },
@@ -1067,9 +1169,9 @@
       "source_file": "src/index.py",
       "source_location": "L1981",
       "weight": 1.0,
-      "_src": "index",
+      "_src": "src_index_py",
       "_tgt": "index_send_report_email",
-      "source": "index",
+      "source": "src_index_py",
       "target": "index_send_report_email",
       "confidence_score": 1.0
     },
@@ -1079,9 +1181,9 @@
       "source_file": "src/index.py",
       "source_location": "L2026",
       "weight": 1.0,
-      "_src": "index",
+      "_src": "src_index_py",
       "_tgt": "index_fetch_mailchimp_json",
-      "source": "index",
+      "source": "src_index_py",
       "target": "index_fetch_mailchimp_json",
       "confidence_score": 1.0
     },
@@ -1091,9 +1193,9 @@
       "source_file": "src/index.py",
       "source_location": "L2064",
       "weight": 1.0,
-      "_src": "index",
+      "_src": "src_index_py",
       "_tgt": "index_safe_error_body",
-      "source": "index",
+      "source": "src_index_py",
       "target": "index_safe_error_body",
       "confidence_score": 1.0
     },
@@ -1103,9 +1205,9 @@
       "source_file": "src/index.py",
       "source_location": "L2075",
       "weight": 1.0,
-      "_src": "index",
+      "_src": "src_index_py",
       "_tgt": "index_retry_delay_seconds",
-      "source": "index",
+      "source": "src_index_py",
       "target": "index_retry_delay_seconds",
       "confidence_score": 1.0
     },
@@ -1115,9 +1217,9 @@
       "source_file": "src/index.py",
       "source_location": "L2085",
       "weight": 1.0,
-      "_src": "index",
+      "_src": "src_index_py",
       "_tgt": "index_load_all_campaign_records",
-      "source": "index",
+      "source": "src_index_py",
       "target": "index_load_all_campaign_records",
       "confidence_score": 1.0
     },
@@ -1127,9 +1229,9 @@
       "source_file": "src/index.py",
       "source_location": "L2110",
       "weight": 1.0,
-      "_src": "index",
+      "_src": "src_index_py",
       "_tgt": "index_load_campaign_record",
-      "source": "index",
+      "source": "src_index_py",
       "target": "index_load_campaign_record",
       "confidence_score": 1.0
     },
@@ -1139,9 +1241,9 @@
       "source_file": "src/index.py",
       "source_location": "L2120",
       "weight": 1.0,
-      "_src": "index",
+      "_src": "src_index_py",
       "_tgt": "index_store_campaign_record",
-      "source": "index",
+      "source": "src_index_py",
       "target": "index_store_campaign_record",
       "confidence_score": 1.0
     },
@@ -1151,9 +1253,9 @@
       "source_file": "src/index.py",
       "source_location": "L2124",
       "weight": 1.0,
-      "_src": "index",
+      "_src": "src_index_py",
       "_tgt": "index_load_all_run_records",
-      "source": "index",
+      "source": "src_index_py",
       "target": "index_load_all_run_records",
       "confidence_score": 1.0
     },
@@ -1163,9 +1265,9 @@
       "source_file": "src/index.py",
       "source_location": "L2155",
       "weight": 1.0,
-      "_src": "index",
+      "_src": "src_index_py",
       "_tgt": "index_store_run_record",
-      "source": "index",
+      "source": "src_index_py",
       "target": "index_store_run_record",
       "confidence_score": 1.0
     },
@@ -1175,9 +1277,9 @@
       "source_file": "src/index.py",
       "source_location": "L2159",
       "weight": 1.0,
-      "_src": "index",
+      "_src": "src_index_py",
       "_tgt": "index_fetch_recent_sent_campaigns",
-      "source": "index",
+      "source": "src_index_py",
       "target": "index_fetch_recent_sent_campaigns",
       "confidence_score": 1.0
     },
@@ -1187,9 +1289,9 @@
       "source_file": "src/index.py",
       "source_location": "L2167",
       "weight": 1.0,
-      "_src": "index",
+      "_src": "src_index_py",
       "_tgt": "index_build_dashboard_payload",
-      "source": "index",
+      "source": "src_index_py",
       "target": "index_build_dashboard_payload",
       "confidence_score": 1.0
     },
@@ -1199,9 +1301,9 @@
       "source_file": "src/index.py",
       "source_location": "L2307",
       "weight": 1.0,
-      "_src": "index",
+      "_src": "src_index_py",
       "_tgt": "index_public_campaign_record",
-      "source": "index",
+      "source": "src_index_py",
       "target": "index_public_campaign_record",
       "confidence_score": 1.0
     },
@@ -1211,9 +1313,9 @@
       "source_file": "src/index.py",
       "source_location": "L2335",
       "weight": 1.0,
-      "_src": "index",
+      "_src": "src_index_py",
       "_tgt": "index_public_run_record",
-      "source": "index",
+      "source": "src_index_py",
       "target": "index_public_run_record",
       "confidence_score": 1.0
     },
@@ -1223,9 +1325,9 @@
       "source_file": "src/index.py",
       "source_location": "L2351",
       "weight": 1.0,
-      "_src": "index",
+      "_src": "src_index_py",
       "_tgt": "index_first_sorted_record",
-      "source": "index",
+      "source": "src_index_py",
       "target": "index_first_sorted_record",
       "confidence_score": 1.0
     },
@@ -1235,9 +1337,9 @@
       "source_file": "src/index.py",
       "source_location": "L2358",
       "weight": 1.0,
-      "_src": "index",
+      "_src": "src_index_py",
       "_tgt": "index_run_id_for_time",
-      "source": "index",
+      "source": "src_index_py",
       "target": "index_run_id_for_time",
       "confidence_score": 1.0
     },
@@ -1247,9 +1349,9 @@
       "source_file": "src/index.py",
       "source_location": "L2362",
       "weight": 1.0,
-      "_src": "index",
+      "_src": "src_index_py",
       "_tgt": "index_due_date_for_send_date",
-      "source": "index",
+      "source": "src_index_py",
       "target": "index_due_date_for_send_date",
       "confidence_score": 1.0
     },
@@ -1259,9 +1361,9 @@
       "source_file": "src/index.py",
       "source_location": "L2369",
       "weight": 1.0,
-      "_src": "index",
+      "_src": "src_index_py",
       "_tgt": "index_cron_state_for_run",
-      "source": "index",
+      "source": "src_index_py",
       "target": "index_cron_state_for_run",
       "confidence_score": 1.0
     },
@@ -1271,9 +1373,9 @@
       "source_file": "src/index.py",
       "source_location": "L2380",
       "weight": 1.0,
-      "_src": "index",
+      "_src": "src_index_py",
       "_tgt": "index_next_daily_utc_occurrence",
-      "source": "index",
+      "source": "src_index_py",
       "target": "index_next_daily_utc_occurrence",
       "confidence_score": 1.0
     },
@@ -1283,9 +1385,9 @@
       "source_file": "src/index.py",
       "source_location": "L2387",
       "weight": 1.0,
-      "_src": "index",
+      "_src": "src_index_py",
       "_tgt": "index_select_comparison_records",
-      "source": "index",
+      "source": "src_index_py",
       "target": "index_select_comparison_records",
       "confidence_score": 1.0
     },
@@ -1295,9 +1397,9 @@
       "source_file": "src/index.py",
       "source_location": "L2401",
       "weight": 1.0,
-      "_src": "index",
+      "_src": "src_index_py",
       "_tgt": "index_record_by_id",
-      "source": "index",
+      "source": "src_index_py",
       "target": "index_record_by_id",
       "confidence_score": 1.0
     },
@@ -1307,9 +1409,9 @@
       "source_file": "src/index.py",
       "source_location": "L2408",
       "weight": 1.0,
-      "_src": "index",
+      "_src": "src_index_py",
       "_tgt": "index_recommendation_heading",
-      "source": "index",
+      "source": "src_index_py",
       "target": "index_recommendation_heading",
       "confidence_score": 1.0
     },
@@ -1319,9 +1421,9 @@
       "source_file": "src/index.py",
       "source_location": "L2415",
       "weight": 1.0,
-      "_src": "index",
+      "_src": "src_index_py",
       "_tgt": "index_report_subject",
-      "source": "index",
+      "source": "src_index_py",
       "target": "index_report_subject",
       "confidence_score": 1.0
     },
@@ -1331,9 +1433,9 @@
       "source_file": "src/index.py",
       "source_location": "L2419",
       "weight": 1.0,
-      "_src": "index",
+      "_src": "src_index_py",
       "_tgt": "index_is_webhook_path",
-      "source": "index",
+      "source": "src_index_py",
       "target": "index_is_webhook_path",
       "confidence_score": 1.0
     },
@@ -1343,9 +1445,9 @@
       "source_file": "src/index.py",
       "source_location": "L2425",
       "weight": 1.0,
-      "_src": "index",
+      "_src": "src_index_py",
       "_tgt": "index_is_test_email_path",
-      "source": "index",
+      "source": "src_index_py",
       "target": "index_is_test_email_path",
       "confidence_score": 1.0
     },
@@ -1355,9 +1457,9 @@
       "source_file": "src/index.py",
       "source_location": "L2429",
       "weight": 1.0,
-      "_src": "index",
+      "_src": "src_index_py",
       "_tgt": "index_parse_webhook_payload",
-      "source": "index",
+      "source": "src_index_py",
       "target": "index_parse_webhook_payload",
       "confidence_score": 1.0
     },
@@ -1367,9 +1469,9 @@
       "source_file": "src/index.py",
       "source_location": "L2442",
       "weight": 1.0,
-      "_src": "index",
+      "_src": "src_index_py",
       "_tgt": "index_flatten_payload",
-      "source": "index",
+      "source": "src_index_py",
       "target": "index_flatten_payload",
       "confidence_score": 1.0
     },
@@ -1379,9 +1481,9 @@
       "source_file": "src/index.py",
       "source_location": "L2458",
       "weight": 1.0,
-      "_src": "index",
+      "_src": "src_index_py",
       "_tgt": "index_normalize_form_key",
-      "source": "index",
+      "source": "src_index_py",
       "target": "index_normalize_form_key",
       "confidence_score": 1.0
     },
@@ -1391,9 +1493,9 @@
       "source_file": "src/index.py",
       "source_location": "L2462",
       "weight": 1.0,
-      "_src": "index",
+      "_src": "src_index_py",
       "_tgt": "index_first_value",
-      "source": "index",
+      "source": "src_index_py",
       "target": "index_first_value",
       "confidence_score": 1.0
     },
@@ -1403,9 +1505,9 @@
       "source_file": "src/index.py",
       "source_location": "L2470",
       "weight": 1.0,
-      "_src": "index",
+      "_src": "src_index_py",
       "_tgt": "index_nested_get",
-      "source": "index",
+      "source": "src_index_py",
       "target": "index_nested_get",
       "confidence_score": 1.0
     },
@@ -1415,9 +1517,9 @@
       "source_file": "src/index.py",
       "source_location": "L2479",
       "weight": 1.0,
-      "_src": "index",
+      "_src": "src_index_py",
       "_tgt": "index_infer_clicks_not_applicable",
-      "source": "index",
+      "source": "src_index_py",
       "target": "index_infer_clicks_not_applicable",
       "confidence_score": 1.0
     },
@@ -1427,9 +1529,9 @@
       "source_file": "src/index.py",
       "source_location": "L2499",
       "weight": 1.0,
-      "_src": "index",
+      "_src": "src_index_py",
       "_tgt": "index_comparison_label",
-      "source": "index",
+      "source": "src_index_py",
       "target": "index_comparison_label",
       "confidence_score": 1.0
     },
@@ -1439,9 +1541,9 @@
       "source_file": "src/index.py",
       "source_location": "L2514",
       "weight": 1.0,
-      "_src": "index",
+      "_src": "src_index_py",
       "_tgt": "index_extract_campaign_number",
-      "source": "index",
+      "source": "src_index_py",
       "target": "index_extract_campaign_number",
       "confidence_score": 1.0
     },
@@ -1451,9 +1553,9 @@
       "source_file": "src/index.py",
       "source_location": "L2526",
       "weight": 1.0,
-      "_src": "index",
+      "_src": "src_index_py",
       "_tgt": "index_extract_segment_name",
-      "source": "index",
+      "source": "src_index_py",
       "target": "index_extract_segment_name",
       "confidence_score": 1.0
     },
@@ -1463,9 +1565,9 @@
       "source_file": "src/index.py",
       "source_location": "L2540",
       "weight": 1.0,
-      "_src": "index",
+      "_src": "src_index_py",
       "_tgt": "index_delivery_assessment",
-      "source": "index",
+      "source": "src_index_py",
       "target": "index_delivery_assessment",
       "confidence_score": 1.0
     },
@@ -1475,9 +1577,9 @@
       "source_file": "src/index.py",
       "source_location": "L2556",
       "weight": 1.0,
-      "_src": "index",
+      "_src": "src_index_py",
       "_tgt": "index_open_assessment",
-      "source": "index",
+      "source": "src_index_py",
       "target": "index_open_assessment",
       "confidence_score": 1.0
     },
@@ -1487,9 +1589,9 @@
       "source_file": "src/index.py",
       "source_location": "L2570",
       "weight": 1.0,
-      "_src": "index",
+      "_src": "src_index_py",
       "_tgt": "index_click_assessment",
-      "source": "index",
+      "source": "src_index_py",
       "target": "index_click_assessment",
       "confidence_score": 1.0
     },
@@ -1499,9 +1601,9 @@
       "source_file": "src/index.py",
       "source_location": "L2588",
       "weight": 1.0,
-      "_src": "index",
+      "_src": "src_index_py",
       "_tgt": "index_trust_assessment",
-      "source": "index",
+      "source": "src_index_py",
       "target": "index_trust_assessment",
       "confidence_score": 1.0
     },
@@ -1511,9 +1613,9 @@
       "source_file": "src/index.py",
       "source_location": "L2602",
       "weight": 1.0,
-      "_src": "index",
+      "_src": "src_index_py",
       "_tgt": "index_delivery_status",
-      "source": "index",
+      "source": "src_index_py",
       "target": "index_delivery_status",
       "confidence_score": 1.0
     },
@@ -1523,9 +1625,9 @@
       "source_file": "src/index.py",
       "source_location": "L2610",
       "weight": 1.0,
-      "_src": "index",
+      "_src": "src_index_py",
       "_tgt": "index_bounce_status",
-      "source": "index",
+      "source": "src_index_py",
       "target": "index_bounce_status",
       "confidence_score": 1.0
     },
@@ -1535,9 +1637,9 @@
       "source_file": "src/index.py",
       "source_location": "L2618",
       "weight": 1.0,
-      "_src": "index",
+      "_src": "src_index_py",
       "_tgt": "index_open_status",
-      "source": "index",
+      "source": "src_index_py",
       "target": "index_open_status",
       "confidence_score": 1.0
     },
@@ -1547,9 +1649,9 @@
       "source_file": "src/index.py",
       "source_location": "L2626",
       "weight": 1.0,
-      "_src": "index",
+      "_src": "src_index_py",
       "_tgt": "index_click_status",
-      "source": "index",
+      "source": "src_index_py",
       "target": "index_click_status",
       "confidence_score": 1.0
     },
@@ -1559,9 +1661,9 @@
       "source_file": "src/index.py",
       "source_location": "L2634",
       "weight": 1.0,
-      "_src": "index",
+      "_src": "src_index_py",
       "_tgt": "index_ctor_status",
-      "source": "index",
+      "source": "src_index_py",
       "target": "index_ctor_status",
       "confidence_score": 1.0
     },
@@ -1571,9 +1673,9 @@
       "source_file": "src/index.py",
       "source_location": "L2642",
       "weight": 1.0,
-      "_src": "index",
+      "_src": "src_index_py",
       "_tgt": "index_unsubscribe_status",
-      "source": "index",
+      "source": "src_index_py",
       "target": "index_unsubscribe_status",
       "confidence_score": 1.0
     },
@@ -1583,9 +1685,9 @@
       "source_file": "src/index.py",
       "source_location": "L2650",
       "weight": 1.0,
-      "_src": "index",
+      "_src": "src_index_py",
       "_tgt": "index_abuse_status",
-      "source": "index",
+      "source": "src_index_py",
       "target": "index_abuse_status",
       "confidence_score": 1.0
     },
@@ -1595,9 +1697,9 @@
       "source_file": "src/index.py",
       "source_location": "L2654",
       "weight": 1.0,
-      "_src": "index",
+      "_src": "src_index_py",
       "_tgt": "index_trend_symbol",
-      "source": "index",
+      "source": "src_index_py",
       "target": "index_trend_symbol",
       "confidence_score": 1.0
     },
@@ -1607,9 +1709,9 @@
       "source_file": "src/index.py",
       "source_location": "L2673",
       "weight": 1.0,
-      "_src": "index",
+      "_src": "src_index_py",
       "_tgt": "index_format_comparison_value",
-      "source": "index",
+      "source": "src_index_py",
       "target": "index_format_comparison_value",
       "confidence_score": 1.0
     },
@@ -1619,9 +1721,9 @@
       "source_file": "src/index.py",
       "source_location": "L2680",
       "weight": 1.0,
-      "_src": "index",
+      "_src": "src_index_py",
       "_tgt": "index_best_metric_from_snapshot",
-      "source": "index",
+      "source": "src_index_py",
       "target": "index_best_metric_from_snapshot",
       "confidence_score": 1.0
     },
@@ -1631,9 +1733,9 @@
       "source_file": "src/index.py",
       "source_location": "L2691",
       "weight": 1.0,
-      "_src": "index",
+      "_src": "src_index_py",
       "_tgt": "index_parse_iso_datetime",
-      "source": "index",
+      "source": "src_index_py",
       "target": "index_parse_iso_datetime",
       "confidence_score": 1.0
     },
@@ -1643,9 +1745,9 @@
       "source_file": "src/index.py",
       "source_location": "L2712",
       "weight": 1.0,
-      "_src": "index",
+      "_src": "src_index_py",
       "_tgt": "index_normalize_send_date",
-      "source": "index",
+      "source": "src_index_py",
       "target": "index_normalize_send_date",
       "confidence_score": 1.0
     },
@@ -1655,9 +1757,9 @@
       "source_file": "src/index.py",
       "source_location": "L2721",
       "weight": 1.0,
-      "_src": "index",
+      "_src": "src_index_py",
       "_tgt": "index_format_datetime_label",
-      "source": "index",
+      "source": "src_index_py",
       "target": "index_format_datetime_label",
       "confidence_score": 1.0
     },
@@ -1667,9 +1769,9 @@
       "source_file": "src/index.py",
       "source_location": "L2731",
       "weight": 1.0,
-      "_src": "index",
+      "_src": "src_index_py",
       "_tgt": "index_json_response",
-      "source": "index",
+      "source": "src_index_py",
       "target": "index_json_response",
       "confidence_score": 1.0
     },
@@ -1679,9 +1781,9 @@
       "source_file": "src/index.py",
       "source_location": "L2739",
       "weight": 1.0,
-      "_src": "index",
+      "_src": "src_index_py",
       "_tgt": "index_html_response",
-      "source": "index",
+      "source": "src_index_py",
       "target": "index_html_response",
       "confidence_score": 1.0
     },
@@ -1691,9 +1793,9 @@
       "source_file": "src/index.py",
       "source_location": "L2747",
       "weight": 1.0,
-      "_src": "index",
+      "_src": "src_index_py",
       "_tgt": "index_require_env",
-      "source": "index",
+      "source": "src_index_py",
       "target": "index_require_env",
       "confidence_score": 1.0
     },
@@ -1703,9 +1805,9 @@
       "source_file": "src/index.py",
       "source_location": "L2754",
       "weight": 1.0,
-      "_src": "index",
+      "_src": "src_index_py",
       "_tgt": "index_get_optional_env",
-      "source": "index",
+      "source": "src_index_py",
       "target": "index_get_optional_env",
       "confidence_score": 1.0
     },
@@ -1715,9 +1817,9 @@
       "source_file": "src/index.py",
       "source_location": "L2761",
       "weight": 1.0,
-      "_src": "index",
+      "_src": "src_index_py",
       "_tgt": "index_percent",
-      "source": "index",
+      "source": "src_index_py",
       "target": "index_percent",
       "confidence_score": 1.0
     },
@@ -1727,9 +1829,9 @@
       "source_file": "src/index.py",
       "source_location": "L2772",
       "weight": 1.0,
-      "_src": "index",
+      "_src": "src_index_py",
       "_tgt": "index_as_int",
-      "source": "index",
+      "source": "src_index_py",
       "target": "index_as_int",
       "confidence_score": 1.0
     },
@@ -1739,9 +1841,9 @@
       "source_file": "src/index.py",
       "source_location": "L2781",
       "weight": 1.0,
-      "_src": "index",
+      "_src": "src_index_py",
       "_tgt": "index_as_float",
-      "source": "index",
+      "source": "src_index_py",
       "target": "index_as_float",
       "confidence_score": 1.0
     },
@@ -1751,9 +1853,9 @@
       "source_file": "src/index.py",
       "source_location": "L2790",
       "weight": 1.0,
-      "_src": "index",
+      "_src": "src_index_py",
       "_tgt": "index_format_percent",
-      "source": "index",
+      "source": "src_index_py",
       "target": "index_format_percent",
       "confidence_score": 1.0
     },
@@ -1763,9 +1865,9 @@
       "source_file": "src/index.py",
       "source_location": "L2797",
       "weight": 1.0,
-      "_src": "index",
+      "_src": "src_index_py",
       "_tgt": "index_format_signed_percent",
-      "source": "index",
+      "source": "src_index_py",
       "target": "index_format_signed_percent",
       "confidence_score": 1.0
     },
@@ -1775,9 +1877,9 @@
       "source_file": "src/index.py",
       "source_location": "L2802",
       "weight": 1.0,
-      "_src": "index",
+      "_src": "src_index_py",
       "_tgt": "index_format_integer",
-      "source": "index",
+      "source": "src_index_py",
       "target": "index_format_integer",
       "confidence_score": 1.0
     },
@@ -1787,9 +1889,9 @@
       "source_file": "src/index.py",
       "source_location": "L2806",
       "weight": 1.0,
-      "_src": "index",
+      "_src": "src_index_py",
       "_tgt": "index_chunked",
-      "source": "index",
+      "source": "src_index_py",
       "target": "index_chunked",
       "confidence_score": 1.0
     },
@@ -1799,9 +1901,9 @@
       "source_file": "src/index.py",
       "source_location": "L2810",
       "weight": 1.0,
-      "_src": "index",
+      "_src": "src_index_py",
       "_tgt": "index_campaign_kv_key",
-      "source": "index",
+      "source": "src_index_py",
       "target": "index_campaign_kv_key",
       "confidence_score": 1.0
     },
@@ -1811,9 +1913,9 @@
       "source_file": "src/index.py",
       "source_location": "L2814",
       "weight": 1.0,
-      "_src": "index",
+      "_src": "src_index_py",
       "_tgt": "index_run_kv_key",
-      "source": "index",
+      "source": "src_index_py",
       "target": "index_run_kv_key",
       "confidence_score": 1.0
     },
@@ -1823,9 +1925,9 @@
       "source_file": "src/index.py",
       "source_location": "L2818",
       "weight": 1.0,
-      "_src": "index",
+      "_src": "src_index_py",
       "_tgt": "index_utc_now",
-      "source": "index",
+      "source": "src_index_py",
       "target": "index_utc_now",
       "confidence_score": 1.0
     },
@@ -1835,9 +1937,9 @@
       "source_file": "src/index.py",
       "source_location": "L2822",
       "weight": 1.0,
-      "_src": "index",
+      "_src": "src_index_py",
       "_tgt": "index_iso_now",
-      "source": "index",
+      "source": "src_index_py",
       "target": "index_iso_now",
       "confidence_score": 1.0
     },
@@ -1847,9 +1949,9 @@
       "source_file": "src/index.py",
       "source_location": "L2826",
       "weight": 1.0,
-      "_src": "index",
+      "_src": "src_index_py",
       "_tgt": "index_normalize_token",
-      "source": "index",
+      "source": "src_index_py",
       "target": "index_normalize_token",
       "confidence_score": 1.0
     },
@@ -1859,9 +1961,9 @@
       "source_file": "src/index.py",
       "source_location": "L2832",
       "weight": 1.0,
-      "_src": "index",
+      "_src": "src_index_py",
       "_tgt": "index_query_truthy",
-      "source": "index",
+      "source": "src_index_py",
       "target": "index_query_truthy",
       "confidence_score": 1.0
     },
@@ -1871,9 +1973,9 @@
       "source_file": "src/index.py",
       "source_location": "L2836",
       "weight": 1.0,
-      "_src": "index",
+      "_src": "src_index_py",
       "_tgt": "index_to_python",
-      "source": "index",
+      "source": "src_index_py",
       "target": "index_to_python",
       "confidence_score": 1.0
     },
@@ -1883,9 +1985,9 @@
       "source_file": "src/index.py",
       "source_location": "L2842",
       "weight": 1.0,
-      "_src": "index",
+      "_src": "src_index_py",
       "_tgt": "index_jsify",
-      "source": "index",
+      "source": "src_index_py",
       "target": "index_jsify",
       "confidence_score": 1.0
     },
@@ -1895,9 +1997,9 @@
       "source_file": "src/index.py",
       "source_location": "L2846",
       "weight": 1.0,
-      "_src": "index",
+      "_src": "src_index_py",
       "_tgt": "index_log_event",
-      "source": "index",
+      "source": "src_index_py",
       "target": "index_log_event",
       "confidence_score": 1.0
     },

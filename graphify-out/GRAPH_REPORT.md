@@ -1,13 +1,21 @@
-# Graph Report - .  (2026-04-10)
+# Graph Report - .  (2026-04-16)
 
 ## Corpus Check
-- 3 files · ~9,770 words
+- 4 files · ~10,165 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
 - 102 nodes · 286 edges · 6 communities detected
 - Extraction: 100% EXTRACTED · 0% INFERRED · 0% AMBIGUOUS
 - Token cost: 0 input · 0 output
+
+## Community Hubs (Navigation)
+- [[_COMMUNITY_Community 0|Community 0]]
+- [[_COMMUNITY_Community 1|Community 1]]
+- [[_COMMUNITY_Community 2|Community 2]]
+- [[_COMMUNITY_Community 3|Community 3]]
+- [[_COMMUNITY_Community 4|Community 4]]
+- [[_COMMUNITY_Community 5|Community 5]]
 
 ## God Nodes (most connected - your core abstractions)
 1. `build_report_bundle()` - 23 edges
